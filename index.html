@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<!-- saved from url=(0042)file:///Users/candido/Downloads/index.html -->
-<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Home Bills</title>
-<link rel="preconnect" href="https://fonts.googleapis.com/">
-<link href="./index_files/css2" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -110,6 +110,12 @@ body{font-family:var(--ff);font-size:15px;color:var(--text);background:var(--bg)
   border:var(--bd2);background:transparent;font-size:12px;font-weight:500;cursor:pointer;
   color:var(--text2);font-family:var(--ff);transition:all .12s;white-space:nowrap}
 .new-sheet-btn:hover{background:var(--bg2);color:var(--text)}
+.close-month-btn{display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;
+  border:1.5px solid #C0522A;background:transparent;font-size:12px;font-weight:600;cursor:pointer;
+  color:#C0522A;font-family:var(--ff);transition:all .12s;white-space:nowrap}
+.close-month-btn:hover{background:#C0522A;color:#fff}
+tr.closing-note td{font-style:italic;color:var(--text3);font-size:12px;border-top:1px dashed var(--bd2);background:var(--bg2)}
+tr.closing-note td.cn-desc{font-weight:500;color:var(--text2)}
 
 /* table */
 .tbl-wrap{overflow-x:auto;border:var(--bd);border-radius:var(--r);background:var(--bg)}
@@ -195,7 +201,7 @@ tbody tr:hover .del-btn{opacity:1}
 </head>
 <body>
 
-<div class="loader gone" id="loader">
+<div class="loader" id="loader">
   <div class="spin"></div>
   <div class="spin-lbl">Connecting to Google Sheets…</div>
 </div>
@@ -204,22 +210,22 @@ tbody tr:hover .del-btn{opacity:1}
 
   <div class="hdr">
     <div class="hdr-title">Home Bills</div>
-    <div class="sync"><div class="sync-dot err" id="sd"></div><span id="sl">Offline</span></div>
+    <div class="sync"><div class="sync-dot" id="sd"></div><span id="sl">—</span></div>
   </div>
 
   <!-- month-end alert (all inline colors — theme-proof) -->
-  <div class="alert" id="alert" style="display: flex;">
+  <div class="alert" id="alert">
     <div class="alert-msg"><strong>Time to close the month!</strong> Ready to wrap up and settle?</div>
     <div class="alert-btns">
       <button class="btn-post" onclick="postpone()">Postpone</button>
-      <button class="btn-cls" onclick="doCloseMonth()">Close month</button>
+      <button class="btn-cls"  onclick="doCloseMonth()">Close month</button>
     </div>
   </div>
 
   <div class="cards">
-    <div class="card ca"><div class="card-lbl">Aleks paid</div><div class="card-val" id="vA">€0.00</div><div class="card-sub" id="cA">0 entries</div></div>
-    <div class="card ci"><div class="card-lbl">Ivan paid</div><div class="card-val" id="vI">€0.00</div><div class="card-sub" id="cI">0 entries</div></div>
-    <div class="card ct"><div class="card-lbl">Total bills</div><div class="card-val" id="vT">€0.00</div><div class="card-sub">fair share: <span id="vS">€0.00</span> each</div></div>
+    <div class="card ca"><div class="card-lbl">Aleks paid</div><div class="card-val" id="vA">€0</div><div class="card-sub" id="cA">0 entries</div></div>
+    <div class="card ci"><div class="card-lbl">Ivan paid</div><div class="card-val" id="vI">€0</div><div class="card-sub" id="cI">0 entries</div></div>
+    <div class="card ct"><div class="card-lbl">Total bills</div><div class="card-val" id="vT">€0</div><div class="card-sub">fair share: <span id="vS">€0</span> each</div></div>
   </div>
 
   <div class="owes ok" id="owes"><span>No entries yet</span></div>
@@ -227,16 +233,18 @@ tbody tr:hover .del-btn{opacity:1}
   <div class="inp-box">
     <div class="inp-top">
       <div class="who-grp">
-        <button class="who-btn wa" id="bA" onclick="setWho(&#39;Aleks&#39;)">Aleks</button>
-        <button class="who-btn" id="bI" onclick="setWho(&#39;Ivan&#39;)">Ivan</button>
+        <button class="who-btn wa" id="bA" onclick="setWho('Aleks')">Aleks</button>
+        <button class="who-btn"    id="bI" onclick="setWho('Ivan')">Ivan</button>
       </div>
       <div class="to-wrap">
         <span class="to-lbl">Save to:</span>
-        <select class="to-sel" id="toSel"><optgroup label="Monthly"><option value="January">January</option><option value="February">February</option><option value="March">March</option><option value="April" selected="">April</option><option value="May">May</option><option value="June">June</option><option value="July">July</option><option value="August">August</option><option value="September">September</option><option value="October">October</option><option value="November">November</option><option value="December">December</option></optgroup></select>
+        <select class="to-sel" id="toSel"></select>
       </div>
     </div>
     <div class="msg-row">
-      <textarea class="msg-ta" id="msgTA" placeholder="e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage" rows="1" oninput="resize(this);livePreview(this.value)" onkeydown="onKey(event)"></textarea>
+      <textarea class="msg-ta" id="msgTA"
+        placeholder="e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage"
+        rows="1" oninput="resize(this);livePreview(this.value)" onkeydown="onKey(event)"></textarea>
       <button class="add-btn" id="addBtn" onclick="submit()">Add</button>
     </div>
     <div class="preview" id="prev"></div>
@@ -244,9 +252,9 @@ tbody tr:hover .del-btn{opacity:1}
   </div>
 
   <div class="tabs">
-    <div class="tab on" onclick="showTab(&#39;entries&#39;,this)">Entries</div>
-    <div class="tab" onclick="showTab(&#39;cats&#39;,this)">By category</div>
-    <div class="tab" onclick="showTab(&#39;hist&#39;,this)">Closed months</div>
+    <div class="tab on"  onclick="showTab('entries',this)">Entries</div>
+    <div class="tab"     onclick="showTab('cats',this)">By category</div>
+    <div class="tab"     onclick="showTab('hist',this)">Closed months</div>
   </div>
 
   <!-- ENTRIES TAB -->
@@ -254,9 +262,12 @@ tbody tr:hover .del-btn{opacity:1}
     <div class="tbar">
       <div class="vw-wrap">
         <span class="vw-lbl">Viewing:</span>
-        <select class="vw-sel" id="vwSel" onchange="onViewChange()"><optgroup label="Monthly"><option value="January">January</option><option value="February">February</option><option value="March">March</option><option value="April" selected="">April</option><option value="May">May</option><option value="June">June</option><option value="July">July</option><option value="August">August</option><option value="September">September</option><option value="October">October</option><option value="November">November</option><option value="December">December</option></optgroup></select>
+        <select class="vw-sel" id="vwSel" onchange="onViewChange()"></select>
       </div>
-      <button class="new-sheet-btn" onclick="openModal()">+ New sheet</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="close-month-btn" id="closeMonthBtn" onclick="doCloseMonth()" style="display:none">Close month</button>
+        <button class="new-sheet-btn" onclick="openModal()">+ New sheet</button>
+      </div>
     </div>
     <div class="tbl-wrap">
       <table>
@@ -267,7 +278,7 @@ tbody tr:hover .del-btn{opacity:1}
           <th class="thi">Ivan</th>
           <th class="thl" style="width:32px"></th>
         </tr></thead>
-        <tbody id="tBody"><tr><td colspan="6"><div class="empty">No entries for April yet.</div></td></tr></tbody>
+        <tbody id="tBody"></tbody>
         <tfoot id="tFoot"></tfoot>
       </table>
     </div>
@@ -278,15 +289,15 @@ tbody tr:hover .del-btn{opacity:1}
     <div class="tbar" style="margin-bottom:16px">
       <div class="vw-wrap">
         <span class="vw-lbl">Viewing:</span>
-        <select class="vw-sel" id="vwSelC" onchange="onViewChangeC()"><optgroup label="Monthly"><option value="January">January</option><option value="February">February</option><option value="March">March</option><option value="April" selected="">April</option><option value="May">May</option><option value="June">June</option><option value="July">July</option><option value="August">August</option><option value="September">September</option><option value="October">October</option><option value="November">November</option><option value="December">December</option></optgroup></select>
+        <select class="vw-sel" id="vwSelC" onchange="onViewChangeC()"></select>
       </div>
     </div>
-    <div class="cats" id="catList"><div class="empty">No category data yet.</div></div>
+    <div class="cats" id="catList"></div>
   </div>
 
   <!-- HISTORY TAB -->
   <div id="tab-hist" style="display:none">
-    <div class="hist" id="histList"><div class="empty">No closed months yet.</div></div>
+    <div class="hist" id="histList"></div>
   </div>
 
 </div><!-- /wrap -->
@@ -297,7 +308,8 @@ tbody tr:hover .del-btn{opacity:1}
     <div class="modal">
       <h3>New custom sheet</h3>
       <p>A separate sheet alongside the monthly ones — good for projects like house improvements.</p>
-      <input type="text" id="sheetName" placeholder="e.g. House improvements" maxlength="30" onkeydown="if(event.key===&#39;Enter&#39;)confirmSheet()">
+      <input type="text" id="sheetName" placeholder="e.g. House improvements" maxlength="30"
+             onkeydown="if(event.key==='Enter')confirmSheet()"/>
       <div class="modal-btns">
         <button class="mcl" onclick="closeModal()">Cancel</button>
         <button class="mok" onclick="confirmSheet()">Create</button>
@@ -306,7 +318,7 @@ tbody tr:hover .del-btn{opacity:1}
   </div>
 </div>
 
-<div class="toast" id="toast">Could not connect. Check SCRIPT_URL in the code.</div>
+<div class="toast" id="toast"></div>
 
 <script>
 // ════════════════════════════════════════════════════
@@ -458,15 +470,78 @@ async function del(sheetName,rowIdx,localIdx){
 // ── Close month ──────────────────────────────────────
 async function doCloseMonth(){
   const b=calcBal();
+  const settled=Math.abs(b.netDiff)<0.02;
   const data={month:CUR_MONTH,year:CUR_YEAR,aleksSpend:b.aleksSpend,ivanSpend:b.ivanSpend,
-    totalBills:b.totalBills,netDiff:b.netDiff,settled:Math.abs(b.netDiff)<0.02,
+    totalBills:b.totalBills,netDiff:b.netDiff,settled,
     closedAt:new Date().toISOString()};
   sync('loading');
   try{
+    // 1. Archive the month
     await POST({action:'closeMonth',monthData:data});
-    closed.push(data);cache[CUR_MONTH]=[];
+    closed.push(data);
+    cache[CUR_MONTH]=[];
+
+    // 2. If there's an outstanding balance, carry it forward to next month
+    if(!settled){
+      const owesAmt=Math.abs(b.netDiff)/2;
+      const nextMonthIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
+      const nextMonth=MONTHS[nextMonthIdx];
+      const debtorWho  = b.netDiff>0 ? 'Ivan'  : 'Aleks';
+      const creditorWho= b.netDiff>0 ? 'Aleks' : 'Ivan';
+
+      // Closing note in current month (display only, no impact on totals)
+      const closingNote={
+        who: debtorWho,
+        amount: owesAmt,
+        desc: `Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
+        month: CUR_MONTH,
+        year: CUR_YEAR,
+        cat: 'closing note',
+        isTransfer: false,
+        isClosingNote: true,
+        toWho: creditorWho,
+        date: fmtDate(new Date()),
+        sheet: CUR_MONTH,
+      };
+      await POST({action:'addEntry',entry:closingNote});
+
+      // Carry-over entry in next month (counts as a settlement debt)
+      const carryEntry={
+        who: debtorWho,
+        amount: owesAmt,
+        desc: `Balance from ${CUR_MONTH}`,
+        month: nextMonth,
+        year: nextMonthIdx===0 ? CUR_YEAR+1 : CUR_YEAR,
+        cat: 'balance carry-over',
+        isTransfer: true,
+        isClosingNote: false,
+        toWho: creditorWho,
+        date: fmtDate(new Date()),
+        sheet: nextMonth,
+      };
+      await POST({action:'addEntry',entry:carryEntry});
+      delete cache[nextMonth];
+      toast(`${CUR_MONTH} closed · €${owesAmt.toFixed(2)} carried to ${nextMonth}`);
+    } else {
+      // Closing note for settled month
+      const closingNote={
+        who:'',amount:0,
+        desc:`Balance forward: fully settled`,
+        month:CUR_MONTH,year:CUR_YEAR,
+        cat:'closing note',isTransfer:false,isClosingNote:true,
+        toWho:'',date:fmtDate(new Date()),sheet:CUR_MONTH,
+      };
+      await POST({action:'addEntry',entry:closingNote});
+      toast(CUR_MONTH+' closed — fully settled!');
+    }
+
     document.getElementById('alert').style.display='none';
-    sync('ok');render();toast(CUR_MONTH+' closed and archived!');
+    document.getElementById('closeMonthBtn').style.display='none';
+    // Switch view to next month
+    const nextMonthIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
+    view=MONTHS[nextMonthIdx];
+    await loadSheet(view);
+    sync('ok');render();
   }catch(e){sync('err');toast('Close failed. Try again.');}
 }
 
@@ -503,6 +578,7 @@ function calcBal(){
   const me=visible();
   let aS=0,iS=0,aPaid=0,iPaid=0;
   for(const e of me){
+    if(e.isClosingNote)continue; // display only, never counted
     if(e.isTransfer){e.who==='Aleks'?aPaid+=e.amount:iPaid+=e.amount;}
     else{e.who==='Aleks'?aS+=e.amount:iS+=e.amount;}
   }
@@ -553,6 +629,14 @@ function renderTable(){
   let as=0,iv=0;
   const isC=custom.includes(view);
   tb.innerHTML=me.map((e,li)=>{
+    // Closing note row — display only, no amounts, no delete
+    if(e.isClosingNote){
+      return`<tr class="closing-note">
+        <td class="ddate">${parseDate(e.date)}</td>
+        <td class="cn-desc" colspan="3">${cap(e.desc)}</td>
+        <td></td><td></td><td></td>
+      </tr>`;
+    }
     const ia=e.who==='Aleks';
     if(!e.isTransfer){ia?as+=e.amount:iv+=e.amount;}
     let ac,ic;
@@ -597,6 +681,14 @@ function renderHist(){
   </div>`).join('');
 }
 function checkAlert(){
+  const btn=document.getElementById('closeMonthBtn');
+  // Show the toolbar button whenever viewing the current month (always available)
+  if(view===CUR_MONTH){
+    btn.style.display='flex';
+  } else {
+    btn.style.display='none';
+  }
+  // Show the banner popup only in the last 5 days and if not postponed
   if(postponed||view!==CUR_MONTH)return;
   const last=new Date(CUR_YEAR,now.getMonth()+1,0).getDate();
   if(now.getDate()>=last-4)document.getElementById('alert').style.display='flex';
@@ -636,6 +728,5 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 
 init();
 </script>
-
-
-</body></html>
+</body>
+</html>
