@@ -266,6 +266,7 @@ tbody tr:hover .del-btn{opacity:1}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="close-month-btn" id="closeMonthBtn" onclick="doCloseMonth()" style="display:none">Close month</button>
+        <button class="new-sheet-btn" onclick="openYearModal()">+ New year</button>
         <button class="new-sheet-btn" onclick="openModal()">+ New sheet</button>
       </div>
     </div>
@@ -302,6 +303,22 @@ tbody tr:hover .del-btn{opacity:1}
 
 </div><!-- /wrap -->
 
+<!-- NEW YEAR MODAL -->
+<div id="yearModal" style="display:none">
+  <div class="modal-bg">
+    <div class="modal">
+      <h3>Add a new year</h3>
+      <p>Creates all 12 month sheets for that year in your spreadsheet.</p>
+      <input type="number" id="yearInput" placeholder="e.g. 2027" min="2020" max="2099"
+             onkeydown="if(event.key==='Enter')confirmYear()"/>
+      <div class="modal-btns">
+        <button class="mcl" onclick="closeYearModal()">Cancel</button>
+        <button class="mok" onclick="confirmYear()">Create</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- NEW SHEET MODAL -->
 <div id="sheetModal" style="display:none">
   <div class="modal-bg">
@@ -334,10 +351,15 @@ const CUR_MONTH=MONTHS[now.getMonth()];
 const CUR_YEAR=now.getFullYear();
 
 let who='Aleks', postponed=false, saving=false;
-let view=CUR_MONTH;
+let view=CUR_YEAR+' - '+CUR_MONTH; // e.g. "2026 - May"
 let custom=[];
+let years=[]; // e.g. [2026, 2027]
 let cache={}; // { sheetName: [entries] }
 let closed=[];
+
+// Sheet name helpers
+function mSheet(year,month){return year+' - '+month;}
+function curSheet(){return mSheet(CUR_YEAR,CUR_MONTH);}
 
 // ── Category / month detection ───────────────────────
 const CATS={
@@ -382,7 +404,7 @@ function parse(text,pw){
     .replace(/\b(euros?|eur|€)\b/gi,'').trim()||'expense';
   const month=detMonth(t);
   const cat=isT?'settlement':detCat(t+' '+desc);
-  const sheet=document.getElementById('toSel')?.value||CUR_MONTH;
+  const sheet=document.getElementById('toSel')?.value||curSheet();
   return{who:pw,amount,desc:desc.trim(),month,year:CUR_YEAR,cat,isTransfer:isT,toWho,
     date:fmtDate(new Date()),sheet};
 }
@@ -417,9 +439,13 @@ async function init(){
   try{
     sync('loading');
     const[si,cl]=await Promise.all([GET({action:'getSheets'}),GET({action:'getClosedMonths'})]);
+    years=si.years||[CUR_YEAR];
     custom=si.customSheets||[];
     closed=cl.closedMonths||[];
-    await loadSheet(CUR_MONTH);
+    if(!years.includes(CUR_YEAR))years.push(CUR_YEAR);
+    years.sort();
+    view=curSheet();
+    await loadSheet(view);
     document.getElementById('loader').classList.add('gone');
     sync('ok');render();
   }catch(e){
@@ -476,71 +502,61 @@ async function doCloseMonth(){
     closedAt:new Date().toISOString()};
   sync('loading');
   try{
-    // 1. Archive the month
     await POST({action:'closeMonth',monthData:data});
     closed.push(data);
-    cache[CUR_MONTH]=[];
+    cache[curSheet()]=[];
 
-    // 2. If there's an outstanding balance, carry it forward to next month
     if(!settled){
       const owesAmt=Math.abs(b.netDiff)/2;
       const nextMonthIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
       const nextMonth=MONTHS[nextMonthIdx];
-      const debtorWho  = b.netDiff>0 ? 'Ivan'  : 'Aleks';
-      const creditorWho= b.netDiff>0 ? 'Aleks' : 'Ivan';
+      const nextYear=nextMonthIdx===0?CUR_YEAR+1:CUR_YEAR;
+      const nextSheetName=mSheet(nextYear,nextMonth);
+      const debtorWho  =b.netDiff>0?'Ivan':'Aleks';
+      const creditorWho=b.netDiff>0?'Aleks':'Ivan';
 
-      // Closing note in current month (display only, no impact on totals)
-      const closingNote={
-        who: debtorWho,
-        amount: owesAmt,
-        desc: `Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
-        month: CUR_MONTH,
-        year: CUR_YEAR,
-        cat: 'closing note',
-        isTransfer: false,
-        isClosingNote: true,
-        toWho: creditorWho,
-        date: fmtDate(new Date()),
-        sheet: CUR_MONTH,
-      };
-      await POST({action:'addEntry',entry:closingNote});
+      // Closing note in current month (display only)
+      await POST({action:'addEntry',entry:{
+        who:debtorWho, amount:owesAmt,
+        desc:`Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
+        month:CUR_MONTH, year:CUR_YEAR, cat:'closing note',
+        isTransfer:false, isClosingNote:true, toWho:creditorWho,
+        date:fmtDate(new Date()), sheet:curSheet(),
+      }});
 
-      // Carry-over entry in next month (counts as a settlement debt)
-      const carryEntry={
-        who: debtorWho,
-        amount: owesAmt,
-        desc: `Balance from ${CUR_MONTH}`,
-        month: nextMonth,
-        year: nextMonthIdx===0 ? CUR_YEAR+1 : CUR_YEAR,
-        cat: 'balance carry-over',
-        isTransfer: true,
-        isClosingNote: false,
-        toWho: creditorWho,
-        date: fmtDate(new Date()),
-        sheet: nextMonth,
-      };
-      await POST({action:'addEntry',entry:carryEntry});
-      delete cache[nextMonth];
-      toast(`${CUR_MONTH} closed · €${owesAmt.toFixed(2)} carried to ${nextMonth}`);
+      // Carry-over entry in next month (counts as debt)
+      await POST({action:'addEntry',entry:{
+        who:debtorWho, amount:owesAmt,
+        desc:`Balance from ${CUR_MONTH} ${CUR_YEAR}`,
+        month:nextMonth, year:nextYear, cat:'balance carry-over',
+        isTransfer:true, isClosingNote:false, toWho:creditorWho,
+        date:fmtDate(new Date()), sheet:nextSheetName,
+      }});
+
+      // Ensure next year's sheets exist if we're rolling over
+      if(nextYear!==CUR_YEAR&&!years.includes(nextYear)){
+        await POST({action:'addYear',year:nextYear});
+        years.push(nextYear);years.sort();
+      }
+      delete cache[nextSheetName];
+      toast(`${CUR_MONTH} closed · €${owesAmt.toFixed(2)} carried to ${nextMonth} ${nextYear}`);
     } else {
-      // Closing note for settled month
-      const closingNote={
+      await POST({action:'addEntry',entry:{
         who:'',amount:0,
-        desc:`Balance forward: fully settled`,
-        month:CUR_MONTH,year:CUR_YEAR,
-        cat:'closing note',isTransfer:false,isClosingNote:true,
-        toWho:'',date:fmtDate(new Date()),sheet:CUR_MONTH,
-      };
-      await POST({action:'addEntry',entry:closingNote});
+        desc:'Balance forward: fully settled',
+        month:CUR_MONTH,year:CUR_YEAR,cat:'closing note',
+        isTransfer:false,isClosingNote:true,toWho:'',
+        date:fmtDate(new Date()),sheet:curSheet(),
+      }});
       toast(CUR_MONTH+' closed — fully settled!');
     }
 
     document.getElementById('alert').style.display='none';
     document.getElementById('closeMonthBtn').style.display='none';
-    // Switch view to next month
-    const nextMonthIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
-    view=MONTHS[nextMonthIdx];
-    await loadSheet(view);
+    const nextIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
+    const nYear=nextIdx===0?CUR_YEAR+1:CUR_YEAR;
+    view=mSheet(nYear,MONTHS[nextIdx]);
+    if(!cache[view]){await loadSheet(view);}
     sync('ok');render();
   }catch(e){sync('err');toast('Close failed. Try again.');}
 }
@@ -559,11 +575,36 @@ async function onViewChangeC(){
   renderCats();renderBals();
 }
 
+// ── Year modal ───────────────────────────────────────
+function openYearModal(){
+  const el=document.getElementById('yearInput');
+  el.value=CUR_YEAR+1;
+  document.getElementById('yearModal').style.display='block';
+  setTimeout(()=>el.focus(),50);
+}
+function closeYearModal(){document.getElementById('yearModal').style.display='none';}
+async function confirmYear(){
+  const val=parseInt(document.getElementById('yearInput').value);
+  if(!val||val<2020||val>2099){toast('Please enter a valid year.');return;}
+  if(years.includes(val)){toast(val+' already exists.');return;}
+  sync('loading');
+  try{
+    await POST({action:'addYear',year:val});
+    years.push(val);years.sort();
+    closeYearModal();
+    view=mSheet(val,'January');
+    cache[view]=[];
+    sync('ok');render();
+    toast(val+' created — all 12 month sheets ready!');
+  }catch(e){sync('err');toast('Could not create year.');}
+}
+
 // ── Custom sheet ─────────────────────────────────────
 async function confirmSheet(){
   const n=document.getElementById('sheetName').value.trim();
   if(!n){toast('Please enter a name.');return;}
-  if([...MONTHS,...custom].map(s=>s.toLowerCase()).includes(n.toLowerCase())){toast('Name already exists.');return;}
+  const allNames=[...years.flatMap(y=>MONTHS.map(m=>mSheet(y,m))),...custom];
+  if(allNames.map(s=>s.toLowerCase()).includes(n.toLowerCase())){toast('Name already exists.');return;}
   sync('loading');
   try{
     await POST({action:'createSheet',name:n});
@@ -597,14 +638,23 @@ function render(){
 }
 function buildDrop(id,cur){
   const el=document.getElementById(id);if(!el)return;
-  const groups=[{l:'Monthly',o:MONTHS},...(custom.length?[{l:'Custom sheets',o:custom}]:[])];
-  el.innerHTML=groups.map(g=>`<optgroup label="${g.l}">`+g.o.map(o=>`<option value="${o}"${o===cur?' selected':''}>${o}</option>`).join('')+`</optgroup>`).join('');
+  const groups=[];
+  years.slice().sort((a,b)=>b-a).forEach(y=>{
+    groups.push({l:String(y),o:MONTHS.map(m=>mSheet(y,m))});
+  });
+  if(custom.length)groups.push({l:'Custom sheets',o:custom});
+  el.innerHTML=groups.map(g=>`<optgroup label="${g.l}">`+g.o.map(o=>`<option value="${o}"${o===cur?' selected':''}>${o.includes(' - ')?o.split(' - ')[1]:o}</option>`).join('')+`</optgroup>`).join('');
+  if(!el.value&&groups[0])el.value=groups[0].o[0];
 }
 function buildToSel(){
   const el=document.getElementById('toSel');if(!el)return;
-  const cur=el.value||CUR_MONTH;
-  const groups=[{l:'Monthly',o:MONTHS},...(custom.length?[{l:'Custom sheets',o:custom}]:[])];
-  el.innerHTML=groups.map(g=>`<optgroup label="${g.l}">`+g.o.map(o=>`<option value="${o}"${o===cur?' selected':''}>${o}</option>`).join('')+`</optgroup>`).join('');
+  const cur=el.value||curSheet();
+  const groups=[];
+  years.slice().sort((a,b)=>b-a).forEach(y=>{
+    groups.push({l:String(y),o:MONTHS.map(m=>mSheet(y,m))});
+  });
+  if(custom.length)groups.push({l:'Custom sheets',o:custom});
+  el.innerHTML=groups.map(g=>`<optgroup label="${g.l}">`+g.o.map(o=>`<option value="${o}"${o===cur?' selected':''}>${o.includes(' - ')?o.split(' - ')[1]:o}</option>`).join('')+`</optgroup>`).join('');
 }
 function renderBals(){
   const b=calcBal();
@@ -682,14 +732,12 @@ function renderHist(){
 }
 function checkAlert(){
   const btn=document.getElementById('closeMonthBtn');
-  // Show the toolbar button whenever viewing the current month (always available)
-  if(view===CUR_MONTH){
+  if(view===curSheet()){
     btn.style.display='flex';
   } else {
     btn.style.display='none';
   }
-  // Show the banner popup only in the last 5 days and if not postponed
-  if(postponed||view!==CUR_MONTH)return;
+  if(postponed||view!==curSheet())return;
   const last=new Date(CUR_YEAR,now.getMonth()+1,0).getDate();
   if(now.getDate()>=last-4)document.getElementById('alert').style.display='flex';
 }
