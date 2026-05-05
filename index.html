@@ -507,7 +507,7 @@ async function doCloseMonth(){
     cache[curSheet()]=[];
 
     if(!settled){
-      const owesAmt=Math.abs(b.netDiff)/2;
+      const owesAmt=Math.abs(b.netDiff);
       const nextMonthIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
       const nextMonth=MONTHS[nextMonthIdx];
       const nextYear=nextMonthIdx===0?CUR_YEAR+1:CUR_YEAR;
@@ -624,11 +624,15 @@ function calcBal(){
     else{e.who==='Aleks'?aS+=e.amount:iS+=e.amount;}
   }
   const totalBills=aS+iS;
-  // netDiff > 0  → Aleks overpaid → Ivan owes Aleks  netDiff/2
-  // netDiff < 0  → Ivan overpaid  → Aleks owes Ivan  |netDiff|/2
-  // Cash: Ivan paying Aleks reduces Ivan's debt; Aleks paying Ivan reduces Aleks's debt
-  const netDiff=(aS-iS)-iPaid+aPaid;
-  return{aleksSpend:aS,ivanSpend:iS,totalBills,fairShare:totalBills/2,netDiff,aleksPaidToIvan:aPaid,ivanPaidToAleks:iPaid};
+  const fairShare=totalBills/2;
+  // Raw imbalance: how much Ivan owes Aleks before any cash transfers
+  // positive = Ivan owes Aleks, negative = Aleks owes Ivan
+  const rawDebt=(aS-iS)/2;
+  // Cash transfers reduce the debt directly (full amount, not halved)
+  // Ivan paying Aleks reduces Ivan's debt
+  // Aleks paying Ivan reduces Aleks's debt (increases Ivan's debt)
+  const netDiff=rawDebt-iPaid+aPaid;
+  return{aleksSpend:aS,ivanSpend:iS,totalBills,fairShare,netDiff,aleksPaidToIvan:aPaid,ivanPaidToAleks:iPaid};
 }
 
 // ── Render ───────────────────────────────────────────
@@ -666,7 +670,7 @@ function renderBals(){
   document.getElementById('cA').textContent=me.filter(e=>e.who==='Aleks'&&!e.isTransfer).length+' entries';
   document.getElementById('cI').textContent=me.filter(e=>e.who==='Ivan'&&!e.isTransfer).length+' entries';
   const ob=document.getElementById('owes');
-  const owesAmt=Math.abs(b.netDiff)/2;
+  const owesAmt=Math.abs(b.netDiff);
   if(b.totalBills===0){ob.className='owes ok';ob.innerHTML='<span>No entries yet</span>';}
   else if(owesAmt<0.01){ob.className='owes ok';ob.innerHTML='<span>All settled!</span>';}
   else if(b.netDiff>0){ob.className='owes io';ob.innerHTML=`Ivan owes Aleks <span class="owes-amt">€${owesAmt.toFixed(2)}</span>`;}
