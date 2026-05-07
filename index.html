@@ -819,7 +819,7 @@ function renderTable(){
       ac=ia?`<td class="damt aa">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
       ic=!ia?`<td class="damt ia">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
     }
-    const desc=e.isTransfer?`→ Cash to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
+    const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const mh=isC?`<span class="dmonth">${e.month}</span>`:'';
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     return`<tr class="${e.isTransfer?'xfer':''}">
@@ -848,7 +848,7 @@ function renderTable(){
     }
     const ia=e.who==='Aleks';
     if(!e.isTransfer){ia?mas+=e.amount:miv+=e.amount;}
-    const desc=e.isTransfer?`→ Cash to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
+    const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     const mh=isC?`<span class="ec-date"> · ${e.month}</span>`:'';
 
