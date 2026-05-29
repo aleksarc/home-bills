@@ -316,7 +316,9 @@ tbody tr:hover .del-btn{opacity:1}
   <div class="login-box">
     <div class="login-title">🏠 Home Bills</div>
     <div class="login-sub">Enter your PIN to continue</div>
-    <form onsubmit="submitPin(event)" autocomplete="on">
+    <form id="loginForm" onsubmit="submitPin(event)" autocomplete="on" method="dialog">
+      <input type="text" name="username" value="homebills"
+        autocomplete="username" style="display:none" readonly/>
       <input type="password" id="pinInput" name="password"
         autocomplete="current-password"
         placeholder="••••••" maxlength="6" inputmode="numeric"/>
@@ -584,6 +586,17 @@ function submitPin(e){
   const pin=document.getElementById('pinInput').value.trim();
   if(!pin)return;
   localStorage.setItem(PIN_KEY,pin);
+
+  // Tell Chrome/Google Password Manager to offer saving this credential
+  if(window.PasswordCredential){
+    const cred=new PasswordCredential({
+      id:'homebills',
+      password:pin,
+      name:'Home Bills PIN',
+    });
+    navigator.credentials.store(cred).catch(()=>{});
+  }
+
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('loader').style.display='flex';
   initApp();
@@ -592,6 +605,16 @@ function submitPin(e){
 async function init(){
   const savedPin=localStorage.getItem(PIN_KEY);
   if(!savedPin){
+    // Try to get saved credential from browser
+    if(window.PasswordCredential&&navigator.credentials){
+      try{
+        const cred=await navigator.credentials.get({password:true,mediation:'silent'});
+        if(cred&&cred.password){
+          localStorage.setItem(PIN_KEY,cred.password);
+          initApp();return;
+        }
+      }catch(e){}
+    }
     document.getElementById('loginScreen').style.display='flex';
     document.getElementById('loader').style.display='none';
     return;
