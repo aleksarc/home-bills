@@ -646,11 +646,13 @@ async function initApp(){
     years.sort();
     view=curSheet();
     await loadSheet(view);
-    document.getElementById('loader').classList.add('gone');
+    const ld=document.getElementById('loader');
+    ld.classList.add('gone');ld.style.display='';
     sync('ok');render();
   }catch(e){
     sync('err');
-    document.getElementById('loader').classList.add('gone');
+    const ld=document.getElementById('loader');
+    ld.classList.add('gone');ld.style.display='';
     toast('Could not connect. Check your connection.');
     render();
   }
