@@ -450,7 +450,7 @@ tbody tr:hover .del-btn{opacity:1}
 //  CONFIGURATION
 //  Paste your deployed Apps Script URL below
 // ════════════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzxKKsqeo7c8bqBGgj1S0p8rWjYsVyWRdHEPUnkBzq9PblU39WloAFiX73u3kB3QUFbKA/exec';
+const SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL_HERE';
 // ════════════════════════════════════════════════════
 
 const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -770,13 +770,13 @@ function buildToSel(){
 }
 function renderBals(){
   const b=calcBal();
-  document.getElementById('vA').textContent='€'+b.aleksSpend.toFixed(2);
-  document.getElementById('vI').textContent='€'+b.ivanSpend.toFixed(2);
+  document.getElementById('vA').textContent='€'+(b.aleksSpend+b.aleksPaidToIvan).toFixed(2);
+  document.getElementById('vI').textContent='€'+(b.ivanSpend+b.ivanPaidToAleks).toFixed(2);
   document.getElementById('vT').textContent='€'+b.totalBills.toFixed(2);
   document.getElementById('vS').textContent='€'+b.fairShare.toFixed(2);
   const me=visible();
-  document.getElementById('cA').textContent=me.filter(e=>e.who==='Aleks'&&!e.isTransfer).length+' entries';
-  document.getElementById('cI').textContent=me.filter(e=>e.who==='Ivan'&&!e.isTransfer).length+' entries';
+  document.getElementById('cA').textContent=me.filter(e=>e.who==='Aleks'&&!e.isClosingNote).length+' entries';
+  document.getElementById('cI').textContent=me.filter(e=>e.who==='Ivan'&&!e.isClosingNote).length+' entries';
   const ob=document.getElementById('owes');
   const owesAmt=Math.abs(b.netDiff);
   if(b.totalBills===0){ob.className='owes ok';ob.innerHTML='<span>No entries yet</span>';}
@@ -813,13 +813,13 @@ function renderTable(){
     if(!e.isTransfer){ia?as+=e.amount:iv+=e.amount;}
     let ac,ic;
     if(e.isTransfer){
-      ac=ia?`<td class="damt xa">−€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
-      ic=!ia?`<td class="damt xa">−€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
+      ac=ia?`<td class="damt aa">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
+      ic=!ia?`<td class="damt ia">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
     }else{
       ac=ia?`<td class="damt aa">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
       ic=!ia?`<td class="damt ia">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
     }
-    const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
+    const desc=e.isTransfer?`→ Cash to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const mh=isC?`<span class="dmonth">${e.month}</span>`:'';
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     return`<tr class="${e.isTransfer?'xfer':''}">
@@ -847,8 +847,8 @@ function renderTable(){
       return`<div class="ec-closing">${cap(e.desc)}</div>`;
     }
     const ia=e.who==='Aleks';
-    if(!e.isTransfer){ia?mas+=e.amount:miv+=e.amount;}
-    const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
+    if(!e.isClosingNote){ia?mas+=e.amount:miv+=e.amount;}
+    const desc=e.isTransfer?`→ Cash to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     const mh=isC?`<span class="ec-date"> · ${e.month}</span>`:'';
 
@@ -881,7 +881,7 @@ function renderTable(){
       </div>
       <div class="ec-right">
         <div class="ec-amt-lbl ${ia?'albl':'ilbl'}">${e.isTransfer?'transfer':e.who}</div>
-        <div class="ec-amt-val ${e.isTransfer?'xa':ia?'aa':'ia'}">${e.isTransfer?'−':''}€${e.amount.toFixed(2)}</div>
+        <div class="ec-amt-val ${e.isTransfer?'aa':ia?'aa':'ia'}">€${e.amount.toFixed(2)}</div>
       </div>
       ${canDel?`<button class="ec-del" onclick="del('${view}',${e.rowIndex},${li})">✕</button>`:''}
     </div>`;
