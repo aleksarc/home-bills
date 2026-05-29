@@ -598,7 +598,9 @@ function submitPin(e){
   }
 
   document.getElementById('loginScreen').style.display='none';
-  document.getElementById('loader').style.display='flex';
+  const loader=document.getElementById('loader');
+  loader.classList.remove('gone');
+  loader.style.display='flex';
   initApp();
 }
 
@@ -611,6 +613,9 @@ async function init(){
         const cred=await navigator.credentials.get({password:true,mediation:'silent'});
         if(cred&&cred.password){
           localStorage.setItem(PIN_KEY,cred.password);
+          const loader=document.getElementById('loader');
+          loader.classList.remove('gone');
+          loader.style.display='flex';
           initApp();return;
         }
       }catch(e){}
