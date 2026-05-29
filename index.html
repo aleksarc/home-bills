@@ -810,7 +810,7 @@ function renderTable(){
       </tr>`;
     }
     const ia=e.who==='Aleks';
-    if(!e.isTransfer){ia?as+=e.amount:iv+=e.amount;}
+    if(!e.isClosingNote){ia?as+=e.amount:iv+=e.amount;}
     let ac,ic;
     if(e.isTransfer){
       ac=ia?`<td class="damt aa">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
