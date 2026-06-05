@@ -721,7 +721,6 @@ async function del(sheetName,rowIdx,localIdx){
 
 // ── Close month ──────────────────────────────────────
 async function doCloseMonth(){
-  // Use the month/year currently being viewed, not necessarily the current month
   const viewYear=parseInt(view.split(' - ')[0]);
   const viewMonth=view.split(' - ')[1];
   const viewSheet=view;
@@ -735,7 +734,6 @@ async function doCloseMonth(){
   try{
     await POST({action:'closeMonth',monthData:data});
     closed.push(data);
-    cache[viewSheet]=[];
 
     if(!settled){
       const owesAmt=Math.abs(b.netDiff);
@@ -743,10 +741,13 @@ async function doCloseMonth(){
       const nextMonth=MONTHS[nextMonthIdx];
       const nextYear=nextMonthIdx===0?viewYear+1:viewYear;
       const nextSheetName=mSheet(nextYear,nextMonth);
-      const debtorWho  =b.netDiff>0?'Ivan':'Aleks';
-      const creditorWho=b.netDiff>0?'Aleks':'Ivan';
 
-      // Closing note in viewed month (display only)
+      // netDiff > 0 → Ivan owes Aleks → carry-over appears as Aleks's bill (creditor paid more)
+      // netDiff < 0 → Aleks owes Ivan → carry-over appears as Ivan's bill
+      const creditorWho=b.netDiff>0?'Aleks':'Ivan';
+      const debtorWho  =b.netDiff>0?'Ivan':'Aleks';
+
+      // Closing note in viewed month (display only, no calc impact)
       await POST({action:'addEntry',entry:{
         who:debtorWho, amount:owesAmt,
         desc:`Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
@@ -755,16 +756,17 @@ async function doCloseMonth(){
         date:fmtDate(new Date()), sheet:viewSheet,
       }});
 
-      // Carry-over entry in next month
+      // Carry-over in next month — stored as a REGULAR BILL attributed to the creditor
+      // This means the creditor "paid" it, increasing the gap, so balance calc naturally
+      // shows the debtor still owes. NOT a transfer.
       await POST({action:'addEntry',entry:{
-        who:debtorWho, amount:owesAmt,
+        who:creditorWho, amount:owesAmt,
         desc:`Balance from ${viewMonth} ${viewYear}`,
         month:nextMonth, year:nextYear, cat:'balance carry-over',
-        isTransfer:true, isClosingNote:false, toWho:creditorWho,
+        isTransfer:false, isClosingNote:false, toWho:'',
         date:fmtDate(new Date()), sheet:nextSheetName,
       }});
 
-      // Create next year sheets if rolling over
       if(nextYear!==viewYear&&!years.includes(nextYear)){
         await POST({action:'addYear',year:nextYear});
         years.push(nextYear);years.sort();
@@ -782,8 +784,12 @@ async function doCloseMonth(){
       toast(`${viewMonth} closed — fully settled!`);
     }
 
+    // Reload closed month so closing note appears, don't wipe cache
+    delete cache[viewSheet];
+    await loadSheet(viewSheet);
+
     document.getElementById('alert').style.display='none';
-    // Switch to next month view
+    // Switch view to next month
     const nextIdx=(MONTHS.indexOf(viewMonth)+1)%12;
     const nYear=nextIdx===0?viewYear+1:viewYear;
     view=mSheet(nYear,MONTHS[nextIdx]);
