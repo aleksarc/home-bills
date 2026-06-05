@@ -381,7 +381,7 @@ tbody tr:hover .del-btn{opacity:1}
         <button class="add-btn" id="addBtn" onclick="submit()">Add</button>
       </div>
       <div class="preview" id="prev"></div>
-      <div class="hint">Type naturally · "paid to [name]" for settlements · month optional</div>
+      <div class="hint">Type naturally · "paid to [name]" for settlements · "on dd/mm" to set date · month optional</div>
     </div>
   </div>
 
@@ -530,9 +530,27 @@ function detMonth(t){
   for(const m of MONTHS){if(s.includes(m.toLowerCase()))return m;}
   return CUR_MONTH;
 }
+function detDate(text){
+  // Match "on dd/mm", "on dd/mm/yyyy", or standalone "dd/mm" or "dd/mm/yyyy"
+  const m=text.match(/\bon\s+(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/i)
+    ||text.match(/\b(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/);
+  if(!m)return null;
+  const dd=parseInt(m[1]),mm=parseInt(m[2]);
+  let yyyy=m[3]?parseInt(m[3]):CUR_YEAR;
+  if(yyyy<100)yyyy+=2000;
+  // Sanity check — valid date?
+  if(dd<1||dd>31||mm<1||mm>12)return null;
+  const d=new Date(yyyy,mm-1,dd);
+  if(isNaN(d))return null;
+  return fmtDate(d);
+}
+
 function parse(text,pw){
   const t=text.trim();if(!t)return null;
-  const am=t.match(/[\d]+(?:[.,]\d{1,2})?/);if(!am)return null;
+  // Extract amount — but skip date-like patterns (dd/mm) first
+  const noDate=t.replace(/\bon\s+\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/gi,'')
+                 .replace(/\b\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/g,'');
+  const am=noDate.match(/[\d]+(?:[.,]\d{1,2})?/);if(!am)return null;
   const amount=parseFloat(am[0].replace(',','.'));
   const isT=/paid\s+(?:to\s+)?(aleks|ivan)/i.test(t)||/\bto\s+(aleks|ivan)\b/i.test(t);
   let toWho=null;
@@ -541,15 +559,20 @@ function parse(text,pw){
     if(m)toWho=m[1][0].toUpperCase()+m[1].slice(1).toLowerCase();
     if(toWho===pw)toWho=pw==='Aleks'?'Ivan':'Aleks';
   }
-  const rm=t.match(/ref\s+(.+)/i);
+  const rm=t.match(/ref\s+(.+?)(?:\s+on\s+\d|$)/i);
   let desc=rm?rm[1]:t.replace(/[\d]+(?:[.,]\d{1,2})?/,'')
     .replace(/^(i\s+)?paid(\s+(to\s+)?(aleks|ivan))?/i,'')
-    .replace(/\b(euros?|eur|€)\b/gi,'').trim()||'expense';
+    .replace(/\b(euros?|eur|€)\b/gi,'')
+    .replace(/\bon\s+\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/gi,'')
+    .replace(/\b\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/g,'')
+    .trim()||'expense';
   const month=detMonth(t);
   const cat=isT?'settlement':detCat(t+' '+desc);
   const sheet=document.getElementById('toSel')?.value||curSheet();
+  // Use date from text if provided, otherwise today
+  const entryDate=detDate(t)||fmtDate(new Date());
   return{who:pw,amount,desc:desc.trim(),month,year:CUR_YEAR,cat,isTransfer:isT,toWho,
-    date:fmtDate(new Date()),sheet};
+    date:entryDate,sheet};
 }
 function livePreview(val){
   const p=document.getElementById('prev');
@@ -557,8 +580,9 @@ function livePreview(val){
   const r=parse(val,who);
   if(!r){p.className='preview on';p.innerHTML='<span class="perr">Couldn\'t parse. Try: "paid 85 electricity" or "paid 500 to Ivan ref mortgage"</span>';return;}
   const note=r.isTransfer?` — reduces what ${r.toWho} owes`:'';
+  const dateNote=detDate(val)?` · ${r.date}`:'';
   p.className='preview on';
-  p.innerHTML=`<span class="pok">✓ ${r.who} · €${r.amount.toFixed(2)} · ${r.cat}${note} · ${r.month}</span>`;
+  p.innerHTML=`<span class="pok">✓ ${r.who} · €${r.amount.toFixed(2)} · ${r.cat}${note} · ${r.month}${dateNote}</span>`;
 }
 
 // ── API ──────────────────────────────────────────────
@@ -697,68 +721,73 @@ async function del(sheetName,rowIdx,localIdx){
 
 // ── Close month ──────────────────────────────────────
 async function doCloseMonth(){
+  // Use the month/year currently being viewed, not necessarily the current month
+  const viewYear=parseInt(view.split(' - ')[0]);
+  const viewMonth=view.split(' - ')[1];
+  const viewSheet=view;
+
   const b=calcBal();
   const settled=Math.abs(b.netDiff)<0.02;
-  const data={month:CUR_MONTH,year:CUR_YEAR,aleksSpend:b.aleksSpend,ivanSpend:b.ivanSpend,
+  const data={month:viewMonth,year:viewYear,aleksSpend:b.aleksSpend,ivanSpend:b.ivanSpend,
     totalBills:b.totalBills,netDiff:b.netDiff,settled,
     closedAt:new Date().toISOString()};
   sync('loading');
   try{
     await POST({action:'closeMonth',monthData:data});
     closed.push(data);
-    cache[curSheet()]=[];
+    cache[viewSheet]=[];
 
     if(!settled){
       const owesAmt=Math.abs(b.netDiff);
-      const nextMonthIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
+      const nextMonthIdx=(MONTHS.indexOf(viewMonth)+1)%12;
       const nextMonth=MONTHS[nextMonthIdx];
-      const nextYear=nextMonthIdx===0?CUR_YEAR+1:CUR_YEAR;
+      const nextYear=nextMonthIdx===0?viewYear+1:viewYear;
       const nextSheetName=mSheet(nextYear,nextMonth);
       const debtorWho  =b.netDiff>0?'Ivan':'Aleks';
       const creditorWho=b.netDiff>0?'Aleks':'Ivan';
 
-      // Closing note in current month (display only)
+      // Closing note in viewed month (display only)
       await POST({action:'addEntry',entry:{
         who:debtorWho, amount:owesAmt,
         desc:`Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
-        month:CUR_MONTH, year:CUR_YEAR, cat:'closing note',
+        month:viewMonth, year:viewYear, cat:'closing note',
         isTransfer:false, isClosingNote:true, toWho:creditorWho,
-        date:fmtDate(new Date()), sheet:curSheet(),
+        date:fmtDate(new Date()), sheet:viewSheet,
       }});
 
-      // Carry-over entry in next month (counts as debt)
+      // Carry-over entry in next month
       await POST({action:'addEntry',entry:{
         who:debtorWho, amount:owesAmt,
-        desc:`Balance from ${CUR_MONTH} ${CUR_YEAR}`,
+        desc:`Balance from ${viewMonth} ${viewYear}`,
         month:nextMonth, year:nextYear, cat:'balance carry-over',
         isTransfer:true, isClosingNote:false, toWho:creditorWho,
         date:fmtDate(new Date()), sheet:nextSheetName,
       }});
 
-      // Ensure next year's sheets exist if we're rolling over
-      if(nextYear!==CUR_YEAR&&!years.includes(nextYear)){
+      // Create next year sheets if rolling over
+      if(nextYear!==viewYear&&!years.includes(nextYear)){
         await POST({action:'addYear',year:nextYear});
         years.push(nextYear);years.sort();
       }
       delete cache[nextSheetName];
-      toast(`${CUR_MONTH} closed · €${owesAmt.toFixed(2)} carried to ${nextMonth} ${nextYear}`);
+      toast(`${viewMonth} closed · €${owesAmt.toFixed(2)} carried to ${nextMonth} ${nextYear}`);
     } else {
       await POST({action:'addEntry',entry:{
         who:'',amount:0,
         desc:'Balance forward: fully settled',
-        month:CUR_MONTH,year:CUR_YEAR,cat:'closing note',
+        month:viewMonth,year:viewYear,cat:'closing note',
         isTransfer:false,isClosingNote:true,toWho:'',
-        date:fmtDate(new Date()),sheet:curSheet(),
+        date:fmtDate(new Date()),sheet:viewSheet,
       }});
-      toast(CUR_MONTH+' closed — fully settled!');
+      toast(`${viewMonth} closed — fully settled!`);
     }
 
     document.getElementById('alert').style.display='none';
-    document.getElementById('closeMonthBtn').style.display='none';
-    const nextIdx=(MONTHS.indexOf(CUR_MONTH)+1)%12;
-    const nYear=nextIdx===0?CUR_YEAR+1:CUR_YEAR;
+    // Switch to next month view
+    const nextIdx=(MONTHS.indexOf(viewMonth)+1)%12;
+    const nYear=nextIdx===0?viewYear+1:viewYear;
     view=mSheet(nYear,MONTHS[nextIdx]);
-    if(!cache[view]){await loadSheet(view);}
+    if(!cache[view])await loadSheet(view);
     sync('ok');render();
   }catch(e){sync('err');toast('Close failed. Try again.');}
 }
@@ -913,7 +942,7 @@ function renderTable(){
       ac=ia?`<td class="damt aa">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
       ic=!ia?`<td class="damt ia">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
     }
-    const desc=e.isTransfer?`→ Cash to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
+    const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const mh=isC?`<span class="dmonth">${e.month}</span>`:'';
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     return`<tr class="${e.isTransfer?'xfer':''}">
@@ -942,7 +971,7 @@ function renderTable(){
     }
     const ia=e.who==='Aleks';
     if(!e.isClosingNote){ia?mas+=e.amount:miv+=e.amount;}
-    const desc=e.isTransfer?`→ Cash to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
+    const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     const mh=isC?`<span class="ec-date"> · ${e.month}</span>`:'';
 
@@ -1018,12 +1047,27 @@ function renderHist(){
 }
 function checkAlert(){
   const btn=document.getElementById('closeMonthBtn');
-  if(view===curSheet()){
-    btn.style.display='flex';
+
+  // Parse the viewed month/year from the view string e.g. "2026 - May"
+  const isMonthView=view.includes(' - ')&&!custom.includes(view);
+  if(isMonthView){
+    const [viewYear, viewMonth] = [parseInt(view.split(' - ')[0]), view.split(' - ')[1]];
+    const alreadyClosed=closed.some(c=>c.month===viewMonth&&parseInt(c.year)===viewYear);
+    const hasEntries=(cache[view]||[]).filter(e=>!e.isClosingNote).length>0;
+    if(!alreadyClosed&&hasEntries){
+      btn.style.display='flex';
+      btn.textContent=`Close ${viewMonth}`;
+    } else {
+      btn.style.display='none';
+    }
   } else {
     btn.style.display='none';
   }
+
+  // Show banner popup only for current month, last 5 days, not postponed
   if(postponed||view!==curSheet())return;
+  const alreadyClosed=closed.some(c=>c.month===CUR_MONTH&&parseInt(c.year)===CUR_YEAR);
+  if(alreadyClosed)return;
   const last=new Date(CUR_YEAR,now.getMonth()+1,0).getDate();
   if(now.getDate()>=last-4)document.getElementById('alert').style.display='flex';
 }
