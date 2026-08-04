@@ -1155,7 +1155,7 @@ function updatePlaceholder(){
   if(window.innerWidth<=600){
     ta.placeholder=ta.dataset.placeholderMobile||'e.g. paid 85 electricity';
   } else {
-    ta.placeholder=ta.dataset.placeholderDesktop||'e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage';
+    ta.placeholder=ta.dataset.placeholderDesktop||'e.g. paid 1200 mortgage | paid 100,00 on dd/mm/yy';
   }
 }
 window.addEventListener('resize',updatePlaceholder);
