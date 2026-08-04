@@ -379,7 +379,7 @@ tbody tr:hover .del-btn{opacity:1}
       <div class="msg-row">
         <textarea class="msg-ta" id="msgTA"
           placeholder="e.g. paid 1200 mortgage"
-          data-placeholder-desktop="e.g. paid 1200 mortgage  /  paid 100,00 electricity on dd/mm/yy"
+          data-placeholder-desktop="e.g. paid 1200 mortgage  /  paid 100,00 on dd/mm/yy"
           data-placeholder-mobile="e.g. paid 85 electricity"
           rows="1" oninput="resize(this);livePreview(this.value)" onkeydown="onKey(event)"></textarea>
         <button class="add-btn" id="addBtn" onclick="submit()">Add</button>
@@ -747,6 +747,11 @@ async function doCloseMonth(){
       const nextYear=nextMonthIdx===0?viewYear+1:viewYear;
       const nextSheetName=mSheet(nextYear,nextMonth);
 
+      // Date helpers — closing note = last day of viewed month, carry-over = 1st of next month
+      const nextMonthNum=nextMonthIdx+1;
+      const firstOfNext=`01/${String(nextMonthNum).padStart(2,'0')}/${nextYear}`;
+      const lastOfCurrent=fmtDate(new Date(viewYear,nextMonthIdx,0)); // day 0 = last day of prev month
+
       // netDiff > 0 → Ivan owes Aleks → carry-over appears as Aleks's bill (creditor paid more)
       // netDiff < 0 → Aleks owes Ivan → carry-over appears as Ivan's bill
       const creditorWho=b.netDiff>0?'Aleks':'Ivan';
@@ -758,18 +763,17 @@ async function doCloseMonth(){
         desc:`Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
         month:viewMonth, year:viewYear, cat:'closing note',
         isTransfer:false, isClosingNote:true, toWho:creditorWho,
-        date:fmtDate(new Date()), sheet:viewSheet,
+        date:lastOfCurrent, sheet:viewSheet,
       }});
 
-      // Carry-over in next month — stored as a REGULAR BILL attributed to the creditor
-      // This means the creditor "paid" it, increasing the gap, so balance calc naturally
-      // shows the debtor still owes. NOT a transfer.
+      // Carry-over in next month — dated 1st of next month so it sorts first
+      // Stored as regular bill attributed to creditor so balance calc picks it up correctly
       await POST({action:'addEntry',entry:{
         who:creditorWho, amount:owesAmt,
         desc:`Balance from ${viewMonth} ${viewYear}`,
         month:nextMonth, year:nextYear, cat:'balance carry-over',
         isTransfer:false, isClosingNote:false, toWho:'',
-        date:fmtDate(new Date()), sheet:nextSheetName,
+        date:firstOfNext, sheet:nextSheetName,
       }});
 
       if(nextYear!==viewYear&&!years.includes(nextYear)){
@@ -1155,7 +1159,7 @@ function updatePlaceholder(){
   if(window.innerWidth<=600){
     ta.placeholder=ta.dataset.placeholderMobile||'e.g. paid 85 electricity';
   } else {
-    ta.placeholder=ta.dataset.placeholderDesktop||'e.g. paid 1200 mortgage | paid 100,00 on dd/mm/yy';
+    ta.placeholder=ta.dataset.placeholderDesktop||'e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage';
   }
 }
 window.addEventListener('resize',updatePlaceholder);
