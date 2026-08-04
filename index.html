@@ -115,6 +115,10 @@ html,body{font-family:var(--ff);font-size:15px;color:var(--text);background:var(
   border-radius:20px;border:1.5px solid #C0522A;background:transparent;
   font-size:13px;font-weight:600;cursor:pointer;color:#C0522A;font-family:var(--ff);transition:all .12s;white-space:nowrap}
 .close-month-btn:hover{background:#C0522A;color:#fff}
+.reopen-month-btn{flex:1;display:flex;align-items:center;justify-content:center;padding:9px 12px;
+  border-radius:20px;border:1.5px solid #534AB7;background:transparent;
+  font-size:13px;font-weight:600;cursor:pointer;color:#534AB7;font-family:var(--ff);transition:all .12s;white-space:nowrap}
+.reopen-month-btn:hover{background:#534AB7;color:#fff}
 
 /* ── Closing note ── */
 tr.closing-note td{font-style:italic;color:var(--text3);font-size:12px;border-top:1px dashed var(--bd2);background:var(--bg2)}
@@ -402,6 +406,7 @@ tbody tr:hover .del-btn{opacity:1}
       </div>
       <div class="tbar-btns">
         <button class="close-month-btn" id="closeMonthBtn" onclick="doCloseMonth()" style="display:none">Close month</button>
+        <button class="reopen-month-btn" id="reopenMonthBtn" onclick="doReopenMonth()" style="display:none">Reopen month</button>
         <button class="new-sheet-btn" onclick="openYearModal()">+ New year</button>
         <button class="new-sheet-btn" onclick="openModal()">+ New sheet</button>
       </div>
@@ -798,7 +803,32 @@ async function doCloseMonth(){
   }catch(e){sync('err');toast('Close failed. Try again.');}
 }
 
-// ── View change ──────────────────────────────────────
+// ── Reopen month ─────────────────────────────────────
+async function doReopenMonth(){
+  const viewYear=parseInt(view.split(' - ')[0]);
+  const viewMonth=view.split(' - ')[1];
+  const nextMonthIdx=(MONTHS.indexOf(viewMonth)+1)%12;
+  const nextMonth=MONTHS[nextMonthIdx];
+  const nextYear=nextMonthIdx===0?viewYear+1:viewYear;
+
+  if(!confirm(`Reopen ${viewMonth} ${viewYear}? This will remove the closing note and the carry-over entry in ${nextMonth}.`))return;
+
+  sync('loading');
+  try{
+    await POST({action:'reopenMonth',month:viewMonth,year:viewYear,nextMonth,nextYear});
+
+    // Remove from local closed array
+    closed=closed.filter(c=>!(c.month===viewMonth&&parseInt(c.year)===viewYear));
+
+    // Invalidate cache for both months so they reload fresh
+    delete cache[view];
+    delete cache[mSheet(nextYear,nextMonth)];
+    await loadSheet(view);
+
+    sync('ok');render();
+    toast(`${viewMonth} reopened — add missing entries and close again when ready.`);
+  }catch(e){sync('err');toast('Reopen failed. Try again.');}
+}
 async function onViewChange(){
   view=document.getElementById('vwSel').value;
   document.getElementById('vwSelC').value=view;
@@ -1052,25 +1082,34 @@ function renderHist(){
   </div>`).join('');
 }
 function checkAlert(){
-  const btn=document.getElementById('closeMonthBtn');
+  const closeBtn=document.getElementById('closeMonthBtn');
+  const reopenBtn=document.getElementById('reopenMonthBtn');
 
-  // Parse the viewed month/year from the view string e.g. "2026 - May"
   const isMonthView=view.includes(' - ')&&!custom.includes(view);
   if(isMonthView){
-    const [viewYear, viewMonth] = [parseInt(view.split(' - ')[0]), view.split(' - ')[1]];
+    const viewYear=parseInt(view.split(' - ')[0]);
+    const viewMonth=view.split(' - ')[1];
     const alreadyClosed=closed.some(c=>c.month===viewMonth&&parseInt(c.year)===viewYear);
     const hasEntries=(cache[view]||[]).filter(e=>!e.isClosingNote).length>0;
-    if(!alreadyClosed&&hasEntries){
-      btn.style.display='flex';
-      btn.textContent=`Close ${viewMonth}`;
+
+    if(alreadyClosed){
+      closeBtn.style.display='none';
+      reopenBtn.style.display='flex';
+      reopenBtn.textContent=`Reopen ${viewMonth}`;
+    } else if(hasEntries){
+      closeBtn.style.display='flex';
+      closeBtn.textContent=`Close ${viewMonth}`;
+      reopenBtn.style.display='none';
     } else {
-      btn.style.display='none';
+      closeBtn.style.display='none';
+      reopenBtn.style.display='none';
     }
   } else {
-    btn.style.display='none';
+    closeBtn.style.display='none';
+    reopenBtn.style.display='none';
   }
 
-  // Show banner popup only for current month, last 5 days, not postponed
+  // Banner popup — only for current month, last 5 days, not postponed, not already closed
   if(postponed||view!==curSheet())return;
   const alreadyClosed=closed.some(c=>c.month===CUR_MONTH&&parseInt(c.year)===CUR_YEAR);
   if(alreadyClosed)return;
