@@ -1,6 +1,6 @@
 # 🏠 Home Bills
 
-A personal household expense tracker for two people, built as a single HTML page hosted on GitHub Pages, with Supabase (PostgreSQL) as the database and a Cloudflare Worker as a secure proxy.
+A personal household expense tracker for two people, built as a single HTML page hosted on GitHub Pages, with Cloudflare D1 as the database and a Cloudflare Worker as a secure proxy.
 
 No subscriptions. No backend servers. No app store. Just open the link and start tracking.
 
@@ -8,7 +8,7 @@ No subscriptions. No backend servers. No app store. Just open the link and start
 
 ## What it does
 
-Home Bills lets two people log shared household expenses via natural language, automatically splits the total 50/50, and always shows who owes whom and how much. Everything syncs in real time through a Supabase database.
+Home Bills lets two people log shared household expenses via natural language, automatically splits the total 50/50, and always shows who owes whom and how much. Everything syncs in real time through a Cloudflare D1 database.
 
 ---
 
@@ -34,7 +34,7 @@ Home Bills lets two people log shared household expenses via natural language, a
 |---|---|
 | Frontend | Single HTML file, vanilla JS and CSS, no frameworks |
 | Hosting | GitHub Pages (free) |
-| Database | Supabase — hosted PostgreSQL |
+| Database | Cloudflare D1 — serverless SQLite (free, never pauses) |
 | Proxy / Auth | Cloudflare Worker (free) |
 | Fonts | DM Sans + DM Mono via Google Fonts |
 
@@ -45,10 +45,10 @@ No frameworks. No npm. No build step.
 ## Architecture
 
 ```
-Browser (GitHub Pages) → Cloudflare Worker → Supabase PostgreSQL
+Browser (GitHub Pages) → Cloudflare Worker → Cloudflare D1 (SQLite)
 ```
 
-Every request carries an `X-App-Pin` header. The Worker validates the PIN before forwarding to Supabase. The Supabase service_role key lives only in the Cloudflare Worker — never in this repository.
+Every request carries an `X-App-Pin` header. The Worker validates the PIN before querying D1. The PIN lives only in the Cloudflare Worker — never in this repository.
 
 ---
 
@@ -58,7 +58,7 @@ Every request carries an `X-App-Pin` header. The Worker validates the PIN before
 |---|---|
 | `index.html` | The entire app — HTML, CSS and JavaScript |
 | `worker.js` | Cloudflare Worker — paste into Cloudflare Worker editor |
-| `schema.sql` | Run once in Supabase SQL Editor to create tables |
+| `d1-schema.sql` | Run once in D1 console to create tables |
 | `README.md` | This file |
 | `archive/Code.gs` | Legacy Google Apps Script — no longer used |
 
@@ -66,28 +66,28 @@ Every request carries an `X-App-Pin` header. The Worker validates the PIN before
 
 ## Setup
 
-### 1. Supabase database
+### 1. Cloudflare D1 database
 
-1. Create a free account at [supabase.com](https://supabase.com)
-2. Create a new project
-3. Go to **SQL Editor** and run the contents of `schema.sql`
-4. Go to **Settings → API** and copy:
-   - Project URL (e.g. `https://yourproject.supabase.co`)
-   - `service_role` key (keep this secret)
+1. Create a free account at [cloudflare.com](https://cloudflare.com)
+2. Go to **Workers & Pages → D1 → Create database**
+3. Name it `home-bills`
+4. Click on the database → **Console tab**
+5. Run each statement from `d1-schema.sql` one at a time
 
 ### 2. Cloudflare Worker
 
-1. Create a free account at [cloudflare.com](https://cloudflare.com)
-2. Go to **Workers & Pages → Create → Start with Hello World**
+1. Go to **Workers & Pages → Create → Start with Hello World**
+2. Name it `home-bills`
 3. Replace the code with the contents of `worker.js`
-4. Fill in the three constants at the top:
+4. Set the PIN at the top:
    ```javascript
-   const SUPABASE_URL = 'https://yourproject.supabase.co';
-   const SUPABASE_KEY = 'your-service-role-key';
-   const VALID_PIN    = 'your-chosen-pin';
+   const VALID_PIN = 'your-chosen-pin';
    ```
 5. Click **Save and deploy**
-6. Copy your Worker URL (e.g. `https://your-worker.yourname.workers.dev`)
+6. Go to **Settings → Bindings → Add binding → D1 Database**
+7. Set Variable name: `DB`, select your `home-bills` D1 database
+8. Click **Add Binding**
+9. Copy your Worker URL (e.g. `https://your-worker.yourname.workers.dev`)
 
 ### 3. Configure the app
 
@@ -101,7 +101,7 @@ Every request carries an `X-App-Pin` header. The Worker validates the PIN before
 ### 4. Host on GitHub Pages
 
 1. Create a new repository on GitHub
-2. Upload `index.html`, `worker.js`, `schema.sql` and `README.md`
+2. Upload `index.html`, `worker.js`, `d1-schema.sql` and `README.md`
 3. Go to **Settings → Pages → Branch: main → Save**
 4. Your app will be live at `https://yourusername.github.io/your-repo`
 
@@ -114,12 +114,12 @@ Share the URL with the other person — you both use the same link, everything s
 **index.html changes** — replace the file on GitHub, live within a minute. No other changes needed.
 
 **worker.js changes:**
-1. Go to Cloudflare → Workers → your worker → Edit code
+1. Go to Cloudflare → Workers → home-bills → Edit code
 2. Make changes → Save and deploy
 3. No changes needed to `index.html`
 
 **Database changes:**
-1. Go to Supabase → SQL Editor
+1. Go to Cloudflare → D1 → home-bills → Console
 2. Run the relevant `ALTER TABLE` or `CREATE TABLE` statements
 3. Update `worker.js` if new columns need to be mapped
 
@@ -160,7 +160,7 @@ If no keyword matches, the most descriptive word in your entry is used as the ca
 
 ## Security
 
-- The Supabase service_role key is stored **only** in the Cloudflare Worker — never in this repository
-- Row Level Security (RLS) is enabled on all tables — the anon key cannot access any data
+- The PIN is stored **only** in the Cloudflare Worker — never in this repository
 - All requests require the correct PIN via the `X-App-Pin` header
 - The PIN is stored in the browser's localStorage and sent automatically after first login
+- D1 is only accessible via the Worker — there are no public API keys exposed
