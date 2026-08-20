@@ -1,14 +1,11 @@
 // =====================================================
-// HOME BILLS — Cloudflare Worker
-// Proxy + PIN auth + Supabase integration
+// HOME BILLS — Cloudflare Worker with D1 Database
 // =====================================================
 
-const SUPABASE_URL = 'https://yourproject.supabase.co';
-const SUPABASE_KEY = 'YOUR_SERVICE_ROLE_KEY_HERE'; // ← replace with your service_role key
-const VALID_PIN    = 'your_app_PIN';
+const VALID_PIN = '198427';
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
 
     // CORS preflight
     if (request.method === 'OPTIONS') return cors('', 204);
@@ -18,61 +15,78 @@ export default {
     if (pin !== VALID_PIN) return cors(JSON.stringify({ error: 'Unauthorized' }), 401);
 
     const url = new URL(request.url);
+    const db = env.DB; // D1 database binding
 
     try {
       if (request.method === 'GET') {
         const action = url.searchParams.get('action');
 
         if (action === 'getVersion') {
-          return cors(JSON.stringify({ version: '3.0' }), 200);
+          return cors(JSON.stringify({ version: '4.0' }), 200);
         }
 
         if (action === 'getSheets') {
-          // Get distinct years from entries + custom sheets
-          const [yearsRes, sheetsRes] = await Promise.all([
-            sbGet('/rest/v1/entries?select=year&order=year.asc'),
-            sbGet('/rest/v1/custom_sheets?select=name&order=name.asc'),
-          ]);
-          const years = [...new Set((yearsRes || []).map(r => r.year))].sort();
-          const customSheets = (sheetsRes || []).map(r => r.name);
-          // Always include current year
+          const yearsResult = await db.prepare(
+            'SELECT DISTINCT year FROM entries ORDER BY year ASC'
+          ).all();
+          const sheetsResult = await db.prepare(
+            'SELECT name FROM custom_sheets ORDER BY name ASC'
+          ).all();
+          let years = yearsResult.results.map(r => r.year);
           const curYear = new Date().getFullYear();
           if (!years.includes(curYear)) years.push(curYear);
+          const customSheets = sheetsResult.results.map(r => r.name);
           return cors(JSON.stringify({ years, customSheets }), 200);
         }
 
         if (action === 'getEntries') {
           const sheet = url.searchParams.get('sheet');
-          const data = await sbGet(
-            `/rest/v1/entries?sheet=eq.${encodeURIComponent(sheet)}&order=created_at.desc`
-          );
-          const entries = (data || []).map(row => ({
+          const result = await db.prepare(
+            'SELECT * FROM entries WHERE sheet = ? ORDER BY id ASC'
+          ).bind(sheet).all();
+
+          function parseDMY(d) {
+            if (!d) return 0;
+            const [dd, mm, yyyy] = d.split('/');
+            return new Date(`${yyyy}-${mm}-${dd}`).getTime();
+          }
+
+          const entries = result.results.map(row => ({
             rowIndex:      row.id,
             date:          row.date,
             desc:          row.description,
             cat:           row.category,
             who:           row.who,
-            amount:        parseFloat(row.amount),
-            isTransfer:    row.is_transfer,
+            amount:        row.amount,
+            isTransfer:    row.is_transfer === 1,
             toWho:         row.to_who || '',
             month:         row.month,
             year:          row.year,
-            isClosingNote: row.is_closing_note,
+            isClosingNote: row.is_closing_note === 1,
             sheet:         row.sheet,
-          }));
+          })).sort((a, b) => {
+            if (a.cat === 'balance carry-over') return -1;
+            if (b.cat === 'balance carry-over') return 1;
+            if (a.isClosingNote) return 1;
+            if (b.isClosingNote) return -1;
+            return parseDMY(a.date) - parseDMY(b.date);
+          });
+
           return cors(JSON.stringify({ entries }), 200);
         }
 
         if (action === 'getClosedMonths') {
-          const data = await sbGet('/rest/v1/closed_months?select=*&order=year.asc,month.asc');
-          const closedMonths = (data || []).map(row => ({
-            month:     row.month,
-            year:      row.year,
-            aleksSpend: parseFloat(row.aleks_spend),
-            ivanSpend:  parseFloat(row.ivan_spend),
-            totalBills: parseFloat(row.total_bills),
-            netDiff:    parseFloat(row.net_diff),
-            settled:    row.settled,
+          const result = await db.prepare(
+            'SELECT * FROM closed_months ORDER BY year ASC, id ASC'
+          ).all();
+          const closedMonths = result.results.map(row => ({
+            month:      row.month,
+            year:       row.year,
+            aleksSpend: row.aleks_spend,
+            ivanSpend:  row.ivan_spend,
+            totalBills: row.total_bills,
+            netDiff:    row.net_diff,
+            settled:    row.settled === 1,
             closedAt:   row.closed_at,
           }));
           return cors(JSON.stringify({ closedMonths }), 200);
@@ -87,40 +101,39 @@ export default {
 
         if (action === 'addEntry') {
           const e = body.entry;
-          const data = await sbPost('/rest/v1/entries', {
-            date:           e.date,
-            description:    e.desc,
-            category:       e.cat,
-            who:            e.who,
-            amount:         e.amount,
-            is_transfer:    e.isTransfer || false,
-            to_who:         e.toWho || '',
-            month:          e.month,
-            year:           e.year,
-            sheet:          e.sheet,
-            is_closing_note: e.isClosingNote || false,
-          });
-          return cors(JSON.stringify({ success: true, id: data?.[0]?.id }), 200);
+          const result = await db.prepare(
+            `INSERT INTO entries (date, description, category, who, amount, is_transfer, to_who, month, year, sheet, is_closing_note)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            e.date, e.desc, e.cat, e.who, e.amount,
+            e.isTransfer ? 1 : 0, e.toWho || '',
+            e.month, e.year, e.sheet,
+            e.isClosingNote ? 1 : 0
+          ).run();
+          return cors(JSON.stringify({ success: true, id: result.meta.last_row_id }), 200);
         }
 
         if (action === 'deleteEntry') {
-          await sbDelete(`/rest/v1/entries?id=eq.${body.rowIndex}`);
+          await db.prepare('DELETE FROM entries WHERE id = ?').bind(body.rowIndex).run();
           return cors(JSON.stringify({ success: true }), 200);
         }
 
         if (action === 'closeMonth') {
           const d = body.monthData;
-          // Upsert — if month already closed, update it
-          await sbUpsert('/rest/v1/closed_months', {
-            month:       d.month,
-            year:        d.year,
-            aleks_spend: d.aleksSpend,
-            ivan_spend:  d.ivanSpend,
-            total_bills: d.totalBills,
-            net_diff:    d.netDiff,
-            settled:     d.settled,
-            closed_at:   d.closedAt,
-          });
+          await db.prepare(
+            `INSERT INTO closed_months (month, year, aleks_spend, ivan_spend, total_bills, net_diff, settled, closed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(month, year) DO UPDATE SET
+               aleks_spend = excluded.aleks_spend,
+               ivan_spend  = excluded.ivan_spend,
+               total_bills = excluded.total_bills,
+               net_diff    = excluded.net_diff,
+               settled     = excluded.settled,
+               closed_at   = excluded.closed_at`
+          ).bind(
+            d.month, d.year, d.aleksSpend, d.ivanSpend,
+            d.totalBills, d.netDiff, d.settled ? 1 : 0, d.closedAt
+          ).run();
           return cors(JSON.stringify({ success: true }), 200);
         }
 
@@ -128,37 +141,33 @@ export default {
           const { month, year, nextMonth, nextYear } = body;
           const sheet = `${year} - ${month}`;
           const nextSheet = `${nextYear} - ${nextMonth}`;
-
-          // 1. Delete closing note from this month
-          await sbDelete(
-            `/rest/v1/entries?sheet=eq.${encodeURIComponent(sheet)}&is_closing_note=eq.true`
-          );
-
-          // 2. Delete carry-over entry from next month
-          await sbDelete(
-            `/rest/v1/entries?sheet=eq.${encodeURIComponent(nextSheet)}&category=eq.balance carry-over&month=eq.${nextMonth}&year=eq.${nextYear}`
-          );
-
-          // 3. Remove from closed_months
-          await sbDelete(`/rest/v1/closed_months?month=eq.${month}&year=eq.${year}`);
-
+          await db.prepare(
+            'DELETE FROM entries WHERE sheet = ? AND is_closing_note = 1'
+          ).bind(sheet).run();
+          await db.prepare(
+            'DELETE FROM entries WHERE sheet = ? AND category = ? AND month = ? AND year = ?'
+          ).bind(nextSheet, 'balance carry-over', nextMonth, nextYear).run();
+          await db.prepare(
+            'DELETE FROM closed_months WHERE month = ? AND year = ?'
+          ).bind(month, year).run();
           return cors(JSON.stringify({ success: true }), 200);
         }
 
         if (action === 'addYear') {
-          // No-op for Supabase — sheets are virtual (just entries with a sheet name)
+          // No-op for D1 — month sheets are virtual
           return cors(JSON.stringify({ success: true }), 200);
         }
 
         if (action === 'createSheet') {
-          await sbPost('/rest/v1/custom_sheets', { name: body.name });
+          await db.prepare(
+            'INSERT INTO custom_sheets (name) VALUES (?) ON CONFLICT(name) DO NOTHING'
+          ).bind(body.name).run();
           return cors(JSON.stringify({ success: true }), 200);
         }
 
         if (action === 'deleteSheet') {
-          // Delete all entries for this sheet and the sheet record
-          await sbDelete(`/rest/v1/entries?sheet=eq.${encodeURIComponent(body.name)}`);
-          await sbDelete(`/rest/v1/custom_sheets?name=eq.${encodeURIComponent(body.name)}`);
+          await db.prepare('DELETE FROM entries WHERE sheet = ?').bind(body.name).run();
+          await db.prepare('DELETE FROM custom_sheets WHERE name = ?').bind(body.name).run();
           return cors(JSON.stringify({ success: true }), 200);
         }
 
@@ -173,62 +182,6 @@ export default {
   }
 };
 
-// ── Supabase helpers ──────────────────────────────────
-const SB_HEADERS = {
-  'apikey':        '',  // set at runtime
-  'Authorization': '',
-  'Content-Type':  'application/json',
-  'Prefer':        'return=representation',
-};
-
-function getHeaders() {
-  return {
-    'apikey':        SUPABASE_KEY,
-    'Authorization': `Bearer ${SUPABASE_KEY}`,
-    'Content-Type':  'application/json',
-    'Prefer':        'return=representation',
-  };
-}
-
-async function sbGet(path) {
-  const res = await fetch(SUPABASE_URL + path, {
-    method: 'GET',
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error(`Supabase GET error: ${res.status} ${await res.text()}`);
-  return res.json();
-}
-
-async function sbPost(path, body) {
-  const res = await fetch(SUPABASE_URL + path, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Supabase POST error: ${res.status} ${await res.text()}`);
-  return res.json();
-}
-
-async function sbUpsert(path, body) {
-  const res = await fetch(SUPABASE_URL + path, {
-    method: 'POST',
-    headers: { ...getHeaders(), 'Prefer': 'resolution=merge-duplicates,return=representation' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Supabase UPSERT error: ${res.status} ${await res.text()}`);
-  return res.json();
-}
-
-async function sbDelete(path) {
-  const res = await fetch(SUPABASE_URL + path, {
-    method: 'DELETE',
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error(`Supabase DELETE error: ${res.status} ${await res.text()}`);
-  return res.json().catch(() => null);
-}
-
-// ── CORS ──────────────────────────────────────────────
 function cors(body, status) {
   return new Response(body, {
     status,
