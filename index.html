@@ -942,8 +942,17 @@ function renderBals(){
   document.getElementById('vT').textContent='€'+b.totalBills.toFixed(2);
   document.getElementById('vS').textContent='€'+b.fairShare.toFixed(2);
   const me=visible();
-  document.getElementById('cA').textContent=me.filter(e=>e.who==='Aleks'&&!e.isClosingNote).length+' entries';
-  document.getElementById('cI').textContent=me.filter(e=>e.who==='Ivan'&&!e.isClosingNote).length+' entries';
+const billEntries=me.filter(
+  e=>!e.isClosingNote &&
+     !e.isTransfer &&
+     e.cat!=='balance carry-over'
+);
+
+document.getElementById('cA').textContent=
+  billEntries.filter(e=>e.who==='Aleks').length+' entries';
+
+document.getElementById('cI').textContent=
+  billEntries.filter(e=>e.who==='Ivan').length+' entries';
   const ob=document.getElementById('owes');
   const owesAmt=Math.abs(b.netDiff);
   if(b.totalBills===0&&Math.abs(b.carryDebt||0)<0.01){ob.className='owes ok';ob.innerHTML='<span>No entries yet</span>';}
