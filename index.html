@@ -379,7 +379,7 @@ tbody tr:hover .del-btn{opacity:1}
       <div class="msg-row">
         <textarea class="msg-ta" id="msgTA"
           placeholder="e.g. paid 1200 mortgage"
-          data-placeholder-desktop="e.g. paid 1200 mortgage  /  paid 100,00 on dd/mm/yy"
+          data-placeholder-desktop="e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage"
           data-placeholder-mobile="e.g. paid 85 electricity"
           rows="1" oninput="resize(this);livePreview(this.value)" onkeydown="onKey(event)"></textarea>
         <button class="add-btn" id="addBtn" onclick="submit()">Add</button>
@@ -886,24 +886,49 @@ async function confirmSheet(){
 
 // ── Balance logic ────────────────────────────────────
 function visible(){return cache[view]||[];}
+// Cutoff: carry-over fix applies from September 2026 onwards
+// Pre-cutoff months used old formula (carry-over was halved) — keep for historical accuracy
+const CARRY_FIX_YEAR=2026;
+const CARRY_FIX_MONTH='September';
+const MONTHS_ORDER=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function isAfterCutoff(year,month){
+  if(year>CARRY_FIX_YEAR)return true;
+  if(year<CARRY_FIX_YEAR)return false;
+  return MONTHS_ORDER.indexOf(month)>=MONTHS_ORDER.indexOf(CARRY_FIX_MONTH);
+}
+
 function calcBal(){
   const me=visible();
-  let aS=0,iS=0,aPaid=0,iPaid=0;
+  let aS=0,iS=0,aPaid=0,iPaid=0,carryDebt=0;
+
+  // Determine if the viewed sheet uses the fixed formula
+  const viewYear=parseInt(view.split(' - ')[0])||CUR_YEAR;
+  const viewMonth=view.split(' - ')[1]||CUR_MONTH;
+  const useFixedFormula=isAfterCutoff(viewYear,viewMonth);
+
   for(const e of me){
     if(e.isClosingNote)continue; // display only, never counted
+
+    if(e.cat==='balance carry-over'){
+      if(useFixedFormula){
+        // Fixed: carry-over is already final net amount, add directly without halving
+        if(e.who==='Ivan') carryDebt -= e.amount; // Aleks owes Ivan
+        else               carryDebt += e.amount; // Ivan owes Aleks
+      } else {
+        // Legacy: carry-over was treated as a regular bill (gets halved)
+        e.who==='Aleks'?aS+=e.amount:iS+=e.amount;
+      }
+      continue;
+    }
+
     if(e.isTransfer){e.who==='Aleks'?aPaid+=e.amount:iPaid+=e.amount;}
     else{e.who==='Aleks'?aS+=e.amount:iS+=e.amount;}
   }
   const totalBills=aS+iS;
   const fairShare=totalBills/2;
-  // Raw imbalance: how much Ivan owes Aleks before any cash transfers
-  // positive = Ivan owes Aleks, negative = Aleks owes Ivan
   const rawDebt=(aS-iS)/2;
-  // Cash transfers reduce the debt directly (full amount, not halved)
-  // Ivan paying Aleks reduces Ivan's debt
-  // Aleks paying Ivan reduces Aleks's debt (increases Ivan's debt)
-  const netDiff=rawDebt-iPaid+aPaid;
-  return{aleksSpend:aS,ivanSpend:iS,totalBills,fairShare,netDiff,aleksPaidToIvan:aPaid,ivanPaidToAleks:iPaid};
+  const netDiff=rawDebt+carryDebt-iPaid+aPaid;
+  return{aleksSpend:aS,ivanSpend:iS,totalBills,fairShare,netDiff,aleksPaidToIvan:aPaid,ivanPaidToAleks:iPaid,carryDebt};
 }
 
 // ── Render ───────────────────────────────────────────
@@ -1100,12 +1125,14 @@ function checkAlert(){
       closeBtn.style.display='none';
       reopenBtn.style.display='flex';
       reopenBtn.textContent=`Reopen ${viewMonth}`;
-    } else if(hasEntries){
-      closeBtn.style.display='flex';
-      closeBtn.textContent=`Close ${viewMonth}`;
-      reopenBtn.style.display='none';
     } else {
-      closeBtn.style.display='none';
+      const hasEntries=(cache[view]||[]).filter(e=>!e.isClosingNote).length>0;
+      if(hasEntries){
+        closeBtn.style.display='flex';
+        closeBtn.textContent=`Close ${viewMonth}`;
+      } else {
+        closeBtn.style.display='none';
+      }
       reopenBtn.style.display='none';
     }
   } else {
