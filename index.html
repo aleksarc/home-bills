@@ -937,8 +937,8 @@ function buildToSel(){
 }
 function renderBals(){
   const b=calcBal();
-  document.getElementById('vA').textContent='€'+(b.aleksSpend+b.aleksPaidToIvan).toFixed(2);
-  document.getElementById('vI').textContent='€'+(b.ivanSpend+b.ivanPaidToAleks).toFixed(2);
+  document.getElementById('vA').textContent='€'+b.aleksSpend.toFixed(2);
+  document.getElementById('vI').textContent='€'+b.ivanSpend.toFixed(2);
   document.getElementById('vT').textContent='€'+b.totalBills.toFixed(2);
   document.getElementById('vS').textContent='€'+b.fairShare.toFixed(2);
   const me=visible();
