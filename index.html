@@ -967,7 +967,7 @@ function renderBals(){
   document.getElementById('cI').textContent=me.filter(e=>e.who==='Ivan'&&!e.isClosingNote).length+' entries';
   const ob=document.getElementById('owes');
   const owesAmt=Math.abs(b.netDiff);
-  if(b.totalBills===0){ob.className='owes ok';ob.innerHTML='<span>No entries yet</span>';}
+  if(b.totalBills===0&&Math.abs(b.carryDebt||0)<0.01){ob.className='owes ok';ob.innerHTML='<span>No entries yet</span>';}
   else if(owesAmt<0.01){ob.className='owes ok';ob.innerHTML='<span>All settled!</span>';}
   else if(b.netDiff>0){ob.className='owes io';ob.innerHTML=`Ivan owes Aleks <span class="owes-amt">€${owesAmt.toFixed(2)}</span>`;}
   else{ob.className='owes ao';ob.innerHTML=`Aleks owes Ivan <span class="owes-amt">€${owesAmt.toFixed(2)}</span>`;}
