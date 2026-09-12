@@ -886,38 +886,17 @@ async function confirmSheet(){
 
 // ── Balance logic ────────────────────────────────────
 function visible(){return cache[view]||[];}
-// Cutoff: carry-over fix applies from September 2026 onwards
-// Pre-cutoff months used old formula (carry-over was halved) — keep for historical accuracy
-const CARRY_FIX_YEAR=2026;
-const CARRY_FIX_MONTH='September';
-const MONTHS_ORDER=['January','February','March','April','May','June','July','August','September','October','November','December'];
-function isAfterCutoff(year,month){
-  if(year>CARRY_FIX_YEAR)return true;
-  if(year<CARRY_FIX_YEAR)return false;
-  return MONTHS_ORDER.indexOf(month)>=MONTHS_ORDER.indexOf(CARRY_FIX_MONTH);
-}
-
 function calcBal(){
   const me=visible();
   let aS=0,iS=0,aPaid=0,iPaid=0,carryDebt=0;
-
-  // Determine if the viewed sheet uses the fixed formula
-  const viewYear=parseInt(view.split(' - ')[0])||CUR_YEAR;
-  const viewMonth=view.split(' - ')[1]||CUR_MONTH;
-  const useFixedFormula=isAfterCutoff(viewYear,viewMonth);
-
   for(const e of me){
     if(e.isClosingNote)continue; // display only, never counted
 
     if(e.cat==='balance carry-over'){
-      if(useFixedFormula){
-        // Fixed: carry-over is already final net amount, add directly without halving
-        if(e.who==='Ivan') carryDebt -= e.amount; // Aleks owes Ivan
-        else               carryDebt += e.amount; // Ivan owes Aleks
-      } else {
-        // Legacy: carry-over was treated as a regular bill (gets halved)
-        e.who==='Aleks'?aS+=e.amount:iS+=e.amount;
-      }
+      // Already the final net amount — added directly, never halved
+      // who = creditor: if Ivan is creditor, Aleks owes Ivan (negative)
+      if(e.who==='Ivan') carryDebt -= e.amount; // Aleks owes Ivan
+      else               carryDebt += e.amount; // Ivan owes Aleks
       continue;
     }
 
