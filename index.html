@@ -1531,7 +1531,7 @@
         </div>
         <div class="msg-row">
           <textarea class="msg-ta" id="msgTA" placeholder="e.g. paid 1200 mortgage"
-            data-placeholder-desktop="e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage"
+            data-placeholder-desktop="e.g. paid 1200 mortgage  or paid 100 electricity on dd/mm"
             data-placeholder-mobile="e.g. paid 85 electricity" rows="1" oninput="resize(this);livePreview(this.value)"
             onkeydown="onKey(event)"></textarea>
           <button class="add-btn" id="addBtn" onclick="submit()">Add</button>
@@ -2709,7 +2709,7 @@
       if (window.innerWidth <= 600) {
         ta.placeholder = ta.dataset.placeholderMobile || 'e.g. paid 85 electricity';
       } else {
-        ta.placeholder = ta.dataset.placeholderDesktop || 'e.g. paid 1200 mortgage  /  Ivan paid 85 electricity  /  paid 500 to Ivan ref mortgage';
+        ta.placeholder = ta.dataset.placeholderDesktop || 'e.g. paid 1200 mortgage  or  paid 500 to Ivan ref mortgage';
       }
     }
     window.addEventListener('resize', updatePlaceholder);
