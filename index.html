@@ -1426,7 +1426,8 @@
       }
 
       /* show table, hide cards on desktop */
-      .entry-card, .ec-closing {
+      .entry-card,
+      .ec-closing {
         display: none
       }
 
@@ -1743,14 +1744,24 @@
         .replace(/\bon\s+\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/gi, '')
         .replace(/\b\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/g, '')
         .trim() || 'expense';
-      const month = detMonth(t);
       const cat = isT ? 'settlement' : detCat(t + ' ' + desc);
       const sheet = document.getElementById('toSel')?.value || curSheet();
+      const sheetParts = sheet.split(' - ');
+      const isMonthSheet =
+        !custom.includes(sheet) &&
+        sheetParts.length === 2 &&
+        /^\d{4}$/.test(sheetParts[0]) &&
+        MONTHS.includes(sheetParts[1]);
+
+      const month = isMonthSheet ? sheetParts[1] : detMonth(t);
+      const year = isMonthSheet ? parseInt(sheetParts[0], 10) : CUR_YEAR;
+
       // Use date from text if provided, otherwise today
       const entryDate = detDate(t) || fmtDate(new Date());
+
       return {
-        who: pw, amount, desc: desc.trim(), month, year: CUR_YEAR, cat, isTransfer: isT, toWho,
-        date: entryDate, sheet
+        who: pw, amount, desc: desc.trim(), month, year, cat,
+        isTransfer: isT, toWho, date: entryDate, sheet
       };
     }
     function livePreview(val) {
