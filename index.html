@@ -1906,6 +1906,7 @@
         toast('This month is closed. Reopen it before adding entries.');
         return;
       }
+      const previousEntries = [...(cache[e.sheet] || [])];
       saving = true; sync('loading');
       document.getElementById('addBtn').disabled = true;
       if (!cache[e.sheet]) cache[e.sheet] = [];
@@ -1918,7 +1919,18 @@
         delete cache[e.sheet]; await loadSheet(e.sheet);
         render(); sync('ok');
         toast(e.isTransfer ? `Settlement: ${e.who} →€${e.amount.toFixed(2)}→ ${e.toWho}` : `Saved: ${e.who} €${e.amount.toFixed(2)} (${e.cat})`);
-      } catch (err) {sync('err'); toast('Save failed. Check connection.');}
+      } catch (err) {
+        cache[e.sheet] = previousEntries;
+        view = e.sheet;
+        render();
+
+        ta.value = val;
+        resize(ta);
+        livePreview(val);
+
+        sync('err');
+        toast('Save failed. Your entry was not added.');
+      }
       saving = false; document.getElementById('addBtn').disabled = false;
     }
 
@@ -1928,11 +1940,18 @@
         toast('This month is closed. Reopen it before deleting entries.');
         return;
       }
+      const previousEntries = [...(cache[sheetName] || [])];
       cache[sheetName].splice(localIdx, 1); render(); sync('loading');
       try {
         await POST({action: 'deleteEntry', sheet: sheetName, rowIndex: rowIdx});
         delete cache[sheetName]; await loadSheet(sheetName); render(); sync('ok'); toast('Entry removed.');
-      } catch (e) {sync('err'); toast('Delete failed.');}
+      } catch (e) {
+        cache[sheetName] = previousEntries;
+        render();
+
+        sync('err');
+        toast('Delete failed. The entry was restored.');
+      }
     }
 
     // ── Close month ──────────────────────────────────────
