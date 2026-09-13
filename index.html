@@ -2072,7 +2072,38 @@
       const nextMonthIdx = (MONTHS.indexOf(viewMonth) + 1) % 12;
       const nextMonth = MONTHS[nextMonthIdx];
       const nextYear = nextMonthIdx === 0 ? viewYear + 1 : viewYear;
+      const viewOrder =
+        viewYear * 12 + MONTHS.indexOf(viewMonth);
 
+      const laterClosed = closed
+        .filter(item => {
+          const itemOrder =
+            parseInt(item.year, 10) * 12 +
+            MONTHS.indexOf(item.month);
+
+          return itemOrder > viewOrder;
+        })
+        .sort((a, b) => {
+          const aOrder =
+            parseInt(a.year, 10) * 12 +
+            MONTHS.indexOf(a.month);
+
+          const bOrder =
+            parseInt(b.year, 10) * 12 +
+            MONTHS.indexOf(b.month);
+
+          return bOrder - aOrder;
+        });
+
+      if (laterClosed.length) {
+        const latest = laterClosed[0];
+
+        toast(
+          `Reopen ${latest.month} ${latest.year} first to preserve the balance chain.`
+        );
+
+        return;
+      }
       if (!confirm(`Reopen ${viewMonth} ${viewYear}? This will remove the closing note and the carry-over entry in ${nextMonth}.`)) return;
 
       sync('loading');
