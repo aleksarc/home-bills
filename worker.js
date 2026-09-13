@@ -158,43 +158,7 @@ export default {
           return cors(JSON.stringify({ success: true }), 200);
         }
 
-        if (action === 'closeMonth') {
-          const d = body.monthData;
-
-          await db.prepare(
-            `INSERT INTO closed_months (
-              month,
-              year,
-              aleks_spend,
-              ivan_spend,
-              total_bills,
-              net_diff,
-              settled,
-              closed_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(month, year) DO UPDATE SET
-              aleks_spend = excluded.aleks_spend,
-              ivan_spend  = excluded.ivan_spend,
-              total_bills = excluded.total_bills,
-              net_diff    = excluded.net_diff,
-              settled     = excluded.settled,
-              closed_at   = excluded.closed_at`
-          ).bind(
-            d.month,
-            d.year,
-            d.aleksSpend,
-            d.ivanSpend,
-            d.totalBills,
-            d.netDiff,
-            d.settled ? 1 : 0,
-            d.closedAt
-          ).run();
-
-          return cors(JSON.stringify({ success: true }), 200);
-        }
-
-        if (action === 'closeMonthAtomic') {
+          if (action === 'closeMonthAtomic') {
           const d = body.monthData;
           const note = body.closingNote;
           const carry = body.carryOver || null;
