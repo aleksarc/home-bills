@@ -1685,16 +1685,20 @@
     // ── Category / month detection ───────────────────────
     const CATS = {
       mortgage: ['mortgage', 'hipoteca'],
-      internet: ['internet', 'broadband', 'wifi', 'wi-fi', 'fibre', 'fiber'],
+      internet: ['internet', 'broadband', 'wifi', 'wi-fi', 'fibre', 'fiber', 'router', 'eir internet'],
       insurance: ['insurance', 'house insurance', 'home insurance'],
-      security: ['security', 'alarm', 'cctv'],
+      security: ['security', 'alarm', 'cctv', 'camera', 'cameras', 'eufy'],
       electricity: ['electricity', 'electric', 'energy', 'electric ireland'],
-      water: ['water'], gas: ['gas', 'heating'],
+      water: ['water'],
+      gas: ['gas', 'heating'],
       groceries: ['groceries', 'supermarket', 'food', 'shopping', 'lidl', 'aldi'],
       rent: ['rent', 'renda'],
       phone: ['phone', 'mobile', 'vodafone', 'nos', 'meo'],
       cleaning: ['cleaning', 'cleaner'],
       maintenance: ['maintenance', 'repair', 'fix', 'plumber'],
+      garden: ['garden', 'grass', 'lawn', 'outdoor', 'b&q chairs', 'bbq'],
+      house: ['lamp', 'ikea', 'furniture', 'house', 'floor', 'flooring', 'stairs', 'carpet', 'kitchen'],
+      messi: ['messi', 'Messi', 'Butternut', 'dog', 'pet', 'petshop'],
     };
     function detCat(t) {
       const s = t.toLowerCase();
