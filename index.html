@@ -1780,7 +1780,27 @@
     async function GET(params) {
       const url = WORKER_URL + '?' + new URLSearchParams(params);
       const r = await fetch(url, {headers: {'X-App-Pin': getPin()}});
-      return r.json();
+
+      let data;
+
+      try {
+        data = await r.json();
+      } catch (e) {
+        const error = new Error(`Invalid server response (${r.status})`);
+        error.status = r.status;
+        throw error;
+      }
+
+      if (!r.ok || data.error) {
+        const error = new Error(
+          data.error || `Request failed (${r.status})`
+        );
+
+        error.status = r.status;
+        throw error;
+      }
+
+      return data;
     }
     async function POST(body) {
       const r = await fetch(WORKER_URL, {
@@ -1870,14 +1890,6 @@
       try {
         sync('loading');
         const [si, cl] = await Promise.all([GET({action: 'getSheets'}), GET({action: 'getClosedMonths'})]);
-        if (si.error === 'Unauthorized' || cl.error === 'Unauthorized') {
-          localStorage.removeItem(PIN_KEY);
-          document.getElementById('loader').style.display = 'none';
-          document.getElementById('loginScreen').style.display = 'flex';
-          document.getElementById('pinErr').textContent = 'Incorrect PIN. Please try again.';
-          document.getElementById('pinInput').value = '';
-          return;
-        }
         years = si.years || [CUR_YEAR];
         custom = si.customSheets || [];
         closed = cl.closedMonths || [];
@@ -1892,14 +1904,31 @@
         sync('err');
         const ld = document.getElementById('loader');
         ld.classList.add('gone'); ld.style.display = '';
+
+        if (e.status === 401) {
+          localStorage.removeItem(PIN_KEY);
+          document.getElementById('loginScreen').style.display = 'flex';
+          document.getElementById('pinErr').textContent = 'Incorrect PIN. Please try again.';
+          document.getElementById('pinInput').value = '';
+          return;
+        }
+
         toast('Could not connect. Check your connection.');
         render();
       }
     }
-    async function loadSheet(name) {
-      if (cache[name] !== undefined) return;
-      try {const d = await GET({action: 'getEntries', sheet: name}); cache[name] = d.entries || [];}
-      catch (e) {cache[name] = [];}
+    async function loadSheet(name, force = false) {
+      if (!force && cache[name] !== undefined) return;
+      const d = await GET({action: 'getEntries', sheet: name});
+      cache[name] = d.entries || [];
+    }
+    async function tryRefreshSheet(name) {
+      try {
+        await loadSheet(name, true);
+        return {ok: true};
+      } catch (error) {
+        return {ok: false, error};
+      }
     }
 
     // ── Submit ───────────────────────────────────────────
@@ -1927,9 +1956,16 @@
       view = e.sheet; render();
       try {
         await POST({action: 'addEntry', entry: e});
-        delete cache[e.sheet]; await loadSheet(e.sheet);
-        render(); sync('ok');
-        toast(e.isTransfer ? `Settlement: ${e.who} →€${e.amount.toFixed(2)}→ ${e.toWho}` : `Saved: ${e.who} €${e.amount.toFixed(2)} (${e.cat})`);
+        const refreshed = await tryRefreshSheet(e.sheet);
+        render();
+
+        if (!refreshed.ok) {
+          sync('err');
+          toast('Saved, but the screen could not refresh. Reload the page.');
+        } else {
+          sync('ok');
+          toast(e.isTransfer ? `Settlement: ${e.who} →€${e.amount.toFixed(2)}→ ${e.toWho}` : `Saved: ${e.who} €${e.amount.toFixed(2)} (${e.cat})`);
+        }
       } catch (err) {
         cache[e.sheet] = previousEntries;
         view = e.sheet;
@@ -1955,7 +1991,16 @@
       cache[sheetName].splice(localIdx, 1); render(); sync('loading');
       try {
         await POST({action: 'deleteEntry', sheet: sheetName, rowIndex: rowIdx});
-        delete cache[sheetName]; await loadSheet(sheetName); render(); sync('ok'); toast('Entry removed.');
+        const refreshed = await tryRefreshSheet(sheetName);
+        render();
+
+        if (!refreshed.ok) {
+          sync('err');
+          toast('Entry removed, but the screen could not refresh. Reload the page.');
+        } else {
+          sync('ok');
+          toast('Entry removed.');
+        }
       } catch (e) {
         cache[sheetName] = previousEntries;
         render();
@@ -2060,6 +2105,8 @@
 
       sync('loading');
 
+      let closeSaved = false;
+
       try {
         await POST({
           action: 'closeMonthAtomic',
@@ -2070,6 +2117,7 @@
           nextYear,
           nextSheet: nextSheetName,
         });
+        closeSaved = true;
 
         // Only change local state after the entire database transaction succeeded.
         closed = closed.filter(item => !(
@@ -2082,13 +2130,20 @@
           years.sort();
         }
 
-        // Reload both affected months from the database.
-        delete cache[viewSheet];
-        delete cache[nextSheetName];
-        await loadSheet(viewSheet);
-        await loadSheet(nextSheetName);
-
         document.getElementById('alert').style.display = 'none';
+
+        const refreshes = await Promise.all([
+          tryRefreshSheet(viewSheet),
+          tryRefreshSheet(nextSheetName),
+        ]);
+
+        if (refreshes.some(result => !result.ok)) {
+          sync('err');
+          render();
+          toast(`${viewMonth} closed, but the screen could not refresh. Reload the page.`);
+          return;
+        }
+
         view = nextSheetName;
         sync('ok');
         render();
@@ -2100,7 +2155,9 @@
         }
       } catch (e) {
         sync('err');
-        toast('Close failed. No changes were saved. Try again.');
+        toast(closeSaved
+          ? `${viewMonth} closed, but the screen could not refresh. Reload the page.`
+          : 'Close failed. No changes were saved. Try again.');
       } finally {
         closingMonth = false;
 
@@ -2152,32 +2209,80 @@
       if (!confirm(`Reopen ${viewMonth} ${viewYear}? This will remove the closing note and the carry-over entry in ${nextMonth}.`)) return;
 
       sync('loading');
+
+      let reopenSaved = false;
+
       try {
         await POST({action: 'reopenMonth', month: viewMonth, year: viewYear, nextMonth, nextYear});
+        reopenSaved = true;
 
         // Remove from local closed array
         closed = closed.filter(c => !(c.month === viewMonth && parseInt(c.year) === viewYear));
 
-        // Invalidate cache for both months so they reload fresh
-        delete cache[view];
-        delete cache[mSheet(nextYear, nextMonth)];
-        await loadSheet(view);
+        const refreshes = await Promise.all([
+          tryRefreshSheet(view),
+          tryRefreshSheet(mSheet(nextYear, nextMonth)),
+        ]);
+
+        if (refreshes.some(result => !result.ok)) {
+          sync('err');
+          render();
+          toast(`${viewMonth} reopened, but the screen could not refresh. Reload the page.`);
+          return;
+        }
 
         sync('ok'); render();
         toast(`${viewMonth} reopened — add missing entries and close again when ready.`);
-      } catch (e) {sync('err'); toast('Reopen failed. Try again.');}
+      } catch (e) {
+        sync('err');
+        toast(reopenSaved
+          ? `${viewMonth} reopened, but the screen could not refresh. Reload the page.`
+          : 'Reopen failed. Try again.');
+      }
     }
     async function onViewChange() {
-      view = document.getElementById('vwSel').value;
-      document.getElementById('vwSelC').value = view;
-      if (!cache[view]) {sync('loading'); await loadSheet(view); sync('ok');}
-      renderTable(); renderCats(); renderBals(); checkAlert();
+      const previousView = view;
+      const requestedView = document.getElementById('vwSel').value;
+      view = requestedView;
+
+      try {
+        if (cache[view] === undefined) {
+          sync('loading');
+          await loadSheet(view);
+        }
+
+        document.getElementById('vwSelC').value = view;
+        sync('ok');
+        renderTable(); renderCats(); renderBals(); checkAlert();
+      } catch (e) {
+        view = previousView;
+        document.getElementById('vwSel').value = previousView;
+        document.getElementById('vwSelC').value = previousView;
+        sync('err');
+        toast('Could not load that month. Your current view was kept.');
+      }
     }
     async function onViewChangeC() {
-      view = document.getElementById('vwSelC').value;
-      document.getElementById('vwSel').value = view;
-      if (!cache[view]) {sync('loading'); await loadSheet(view); sync('ok');}
-      renderCats(); renderBals();
+      const previousView = view;
+      const requestedView = document.getElementById('vwSelC').value;
+      view = requestedView;
+
+      try {
+        if (cache[view] === undefined) {
+          sync('loading');
+          await loadSheet(view);
+        }
+
+        document.getElementById('vwSel').value = view;
+        sync('ok');
+        renderCats(); renderBals();
+      } catch (e) {
+        view = previousView;
+        document.getElementById('vwSel').value = previousView;
+        document.getElementById('vwSelC').value = previousView;
+        sync('err');
+        toast('Could not load that month. Your current view was kept.');
+      }
     }
 
     // ── Year modal ───────────────────────────────────────
