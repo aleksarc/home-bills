@@ -2,6 +2,51 @@
 // HOME BILLS — Cloudflare Worker with D1 Database
 // =====================================================
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function calendarSheetParts(sheet) {
+  if (typeof sheet !== 'string') return null;
+  const parts = sheet.split(' - ');
+  if (
+    parts.length !== 2 ||
+    !/^\d{4}$/.test(parts[0]) ||
+    !MONTHS.includes(parts[1])
+  ) return null;
+
+  return { year: Number(parts[0]), month: parts[1] };
+}
+
+function isValidDate(date) {
+  if (typeof date !== 'string') return false;
+  const match = date.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return false;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
+async function isSheetClosed(db, sheet) {
+  const result = await db.prepare(
+    `SELECT 1
+     FROM closed_months
+     WHERE CAST(year AS TEXT) || ' - ' || month = ?
+     LIMIT 1`
+  ).bind(sheet).first();
+
+  return Boolean(result);
+}
+
 export default {
   async fetch(request, env) {
 
@@ -112,6 +157,62 @@ export default {
         if (action === 'addEntry') {
           const e = body.entry;
 
+          if (
+            !e ||
+            !['Aleks', 'Ivan'].includes(e.who) ||
+            typeof e.amount !== 'number' ||
+            !Number.isFinite(e.amount) ||
+            e.amount <= 0 ||
+            typeof e.desc !== 'string' ||
+            !e.desc.trim() ||
+            e.desc.length > 500 ||
+            typeof e.cat !== 'string' ||
+            !e.cat.trim() ||
+            e.cat.length > 80 ||
+            typeof e.month !== 'string' ||
+            !MONTHS.includes(e.month) ||
+            !Number.isInteger(Number(e.year)) ||
+            typeof e.sheet !== 'string' ||
+            !e.sheet.trim() ||
+            e.sheet.length > 100 ||
+            typeof e.isTransfer !== 'boolean' ||
+            !isValidDate(e.date)
+          ) {
+            return cors(JSON.stringify({ error: 'Invalid entry data' }), 400);
+          }
+
+          const calendarSheet = calendarSheetParts(e.sheet);
+
+          if (
+            calendarSheet &&
+            (calendarSheet.month !== e.month || calendarSheet.year !== Number(e.year))
+          ) {
+            return cors(JSON.stringify({ error: 'Entry month does not match its sheet' }), 400);
+          }
+
+          if (
+            (e.isTransfer && (
+              e.cat !== 'settlement' ||
+              !['Aleks', 'Ivan'].includes(e.toWho) ||
+              e.toWho === e.who
+            )) ||
+            (!e.isTransfer && e.cat === 'settlement')
+          ) {
+            return cors(JSON.stringify({ error: 'Invalid settlement data' }), 400);
+          }
+
+          if (
+            e.isClosingNote ||
+            e.cat === 'closing note' ||
+            e.cat === 'balance carry-over'
+          ) {
+            return cors(JSON.stringify({ error: 'Managed balance entries cannot be added manually' }), 400);
+          }
+
+          if (await isSheetClosed(db, e.sheet)) {
+            return cors(JSON.stringify({ error: 'This month is closed' }), 409);
+          }
+
           const result = await db.prepare(
             `INSERT INTO entries (
               date,
@@ -151,21 +252,113 @@ export default {
         }
 
         if (action === 'deleteEntry') {
+          const rowIndex = Number(body.rowIndex);
+
+          if (!Number.isInteger(rowIndex) || rowIndex < 1) {
+            return cors(JSON.stringify({ error: 'Invalid entry ID' }), 400);
+          }
+
+          const entry = await db.prepare(
+            'SELECT sheet FROM entries WHERE id = ?'
+          ).bind(rowIndex).first();
+
+          if (!entry) {
+            return cors(JSON.stringify({ error: 'Entry not found' }), 404);
+          }
+
+          if (await isSheetClosed(db, entry.sheet)) {
+            return cors(JSON.stringify({ error: 'This month is closed' }), 409);
+          }
+
           await db.prepare(
             'DELETE FROM entries WHERE id = ?'
-          ).bind(body.rowIndex).run();
+          ).bind(rowIndex).run();
 
           return cors(JSON.stringify({ success: true }), 200);
         }
 
-          if (action === 'closeMonthAtomic') {
+        if (action === 'closeMonthAtomic') {
           const d = body.monthData;
           const note = body.closingNote;
           const carry = body.carryOver || null;
           const { nextMonth, nextYear, nextSheet } = body;
+          const targetMonthIndex = d ? MONTHS.indexOf(d.month) : -1;
+          const parsedYear = d ? Number(d.year) : NaN;
+          const parsedNextYear = Number(nextYear);
+          const expectedNextIndex = (targetMonthIndex + 1) % 12;
+          const expectedNextYear = expectedNextIndex === 0
+            ? parsedYear + 1
+            : parsedYear;
+          const targetSheet = d ? `${parsedYear} - ${d.month}` : '';
+          const expectedNextSheet = `${parsedNextYear} - ${nextMonth}`;
 
-          if (!d || !note || !nextMonth || !nextYear || !nextSheet) {
+          if (
+            !d ||
+            !note ||
+            targetMonthIndex < 0 ||
+            !Number.isInteger(parsedYear) ||
+            MONTHS[expectedNextIndex] !== nextMonth ||
+            parsedNextYear !== expectedNextYear ||
+            nextSheet !== expectedNextSheet ||
+            note.sheet !== targetSheet ||
+            note.month !== d.month ||
+            Number(note.year) !== parsedYear ||
+            note.cat !== 'closing note' ||
+            note.isClosingNote !== true ||
+            note.isTransfer !== false ||
+            !isValidDate(note.date) ||
+            typeof d.aleksSpend !== 'number' ||
+            !Number.isFinite(d.aleksSpend) ||
+            d.aleksSpend < 0 ||
+            typeof d.ivanSpend !== 'number' ||
+            !Number.isFinite(d.ivanSpend) ||
+            d.ivanSpend < 0 ||
+            typeof d.totalBills !== 'number' ||
+            !Number.isFinite(d.totalBills) ||
+            typeof d.netDiff !== 'number' ||
+            !Number.isFinite(d.netDiff) ||
+            typeof d.settled !== 'boolean' ||
+            Math.abs(d.totalBills - (d.aleksSpend + d.ivanSpend)) > 0.01 ||
+            d.settled !== (Math.abs(d.netDiff) < 0.02) ||
+            typeof note.amount !== 'number' ||
+            !Number.isFinite(note.amount) ||
+            (d.settled
+              ? note.amount !== 0 || note.who !== '' || (note.toWho || '') !== ''
+              : Math.abs(note.amount - Math.abs(d.netDiff)) > 0.01 ||
+                !['Aleks', 'Ivan'].includes(note.who) ||
+                !['Aleks', 'Ivan'].includes(note.toWho) ||
+                note.who === note.toWho ||
+                note.toWho !== (d.netDiff > 0 ? 'Aleks' : 'Ivan') ||
+                note.who !== (d.netDiff > 0 ? 'Ivan' : 'Aleks'))
+          ) {
             return cors(JSON.stringify({ error: 'Invalid close month data' }), 400);
+          }
+
+          if (
+            (d.settled && carry) ||
+            (!d.settled && (
+              !carry ||
+              !['Aleks', 'Ivan'].includes(carry.who) ||
+              carry.cat !== 'balance carry-over' ||
+              carry.isClosingNote !== false ||
+              carry.isTransfer !== false ||
+              carry.sheet !== nextSheet ||
+              carry.month !== nextMonth ||
+              Number(carry.year) !== parsedNextYear ||
+              !isValidDate(carry.date) ||
+              typeof carry.amount !== 'number' ||
+              !Number.isFinite(carry.amount) ||
+              Math.abs(carry.amount - Math.abs(d.netDiff)) > 0.01 ||
+              carry.who !== note.toWho
+            ))
+          ) {
+            return cors(JSON.stringify({ error: 'Invalid carry-over data' }), 400);
+          }
+
+          if (await isSheetClosed(db, nextSheet)) {
+            return cors(JSON.stringify({
+              error: `Reopen ${nextMonth} ${parsedNextYear} before closing ${d.month} ${parsedYear}`,
+            }), 409);
           }
 
           const statements = [
@@ -279,13 +472,54 @@ export default {
 
         if (action === 'reopenMonth') {
           const { month, year, nextMonth, nextYear } = body;
+          const parsedYear = Number(year);
+          const parsedNextYear = Number(nextYear);
+          const monthIndex = MONTHS.indexOf(month);
+          const expectedNextIndex = (monthIndex + 1) % 12;
+          const expectedNextYear = expectedNextIndex === 0
+            ? parsedYear + 1
+            : parsedYear;
 
-          if (!month || !year || !nextMonth || !nextYear) {
+          if (
+            monthIndex < 0 ||
+            !Number.isInteger(parsedYear) ||
+            MONTHS[expectedNextIndex] !== nextMonth ||
+            parsedNextYear !== expectedNextYear
+          ) {
             return cors(JSON.stringify({ error: 'Invalid reopen month data' }), 400);
           }
 
-          const sheet = `${year} - ${month}`;
-          const nextSheet = `${nextYear} - ${nextMonth}`;
+          const closedResult = await db.prepare(
+            'SELECT month, year FROM closed_months'
+          ).all();
+
+          const targetOrder = parsedYear * 12 + monthIndex;
+          const orderedClosed = closedResult.results.map(item => ({
+            ...item,
+            order: Number(item.year) * 12 + MONTHS.indexOf(item.month),
+          }));
+
+          const targetClosed = orderedClosed.some(item =>
+            item.month === month && Number(item.year) === parsedYear
+          );
+
+          if (!targetClosed) {
+            return cors(JSON.stringify({ error: 'Month is not closed' }), 409);
+          }
+
+          const laterClosed = orderedClosed
+            .filter(item => item.order > targetOrder)
+            .sort((a, b) => b.order - a.order);
+
+          if (laterClosed.length) {
+            const latest = laterClosed[0];
+            return cors(JSON.stringify({
+              error: `Reopen ${latest.month} ${latest.year} first to preserve the balance chain`,
+            }), 409);
+          }
+
+          const sheet = `${parsedYear} - ${month}`;
+          const nextSheet = `${parsedNextYear} - ${nextMonth}`;
 
           await db.batch([
             db.prepare(
@@ -302,12 +536,12 @@ export default {
               nextSheet,
               'balance carry-over',
               nextMonth,
-              nextYear
+              parsedNextYear
             ),
 
             db.prepare(
               'DELETE FROM closed_months WHERE month = ? AND year = ?'
-            ).bind(month, year),
+            ).bind(month, parsedYear),
           ]);
 
           return cors(JSON.stringify({ success: true }), 200);
@@ -319,23 +553,45 @@ export default {
         }
 
         if (action === 'createSheet') {
+          const name = typeof body.name === 'string' ? body.name.trim() : '';
+
+          if (!name || name.length > 100 || calendarSheetParts(name)) {
+            return cors(JSON.stringify({ error: 'Invalid custom sheet name' }), 400);
+          }
+
           await db.prepare(
             `INSERT INTO custom_sheets (name)
              VALUES (?)
              ON CONFLICT(name) DO NOTHING`
-          ).bind(body.name).run();
+          ).bind(name).run();
 
           return cors(JSON.stringify({ success: true }), 200);
         }
 
         if (action === 'deleteSheet') {
-          await db.prepare(
-            'DELETE FROM entries WHERE sheet = ?'
-          ).bind(body.name).run();
+          const name = body.name;
 
-          await db.prepare(
-            'DELETE FROM custom_sheets WHERE name = ?'
-          ).bind(body.name).run();
+          if (typeof name !== 'string' || !name.trim()) {
+            return cors(JSON.stringify({ error: 'Invalid sheet name' }), 400);
+          }
+
+          const customSheet = await db.prepare(
+            'SELECT 1 FROM custom_sheets WHERE name = ? LIMIT 1'
+          ).bind(name).first();
+
+          if (!customSheet) {
+            return cors(JSON.stringify({ error: 'Custom sheet not found' }), 404);
+          }
+
+          await db.batch([
+            db.prepare(
+              'DELETE FROM entries WHERE sheet = ?'
+            ).bind(name),
+
+            db.prepare(
+              'DELETE FROM custom_sheets WHERE name = ?'
+            ).bind(name),
+          ]);
 
           return cors(JSON.stringify({ success: true }), 200);
         }
