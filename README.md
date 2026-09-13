@@ -1,151 +1,187 @@
 # 🏠 Home Bills
 
-A personal household expense tracker for two people, built as a single HTML page hosted on GitHub Pages, with Cloudflare D1 as the database and a Cloudflare Worker as a secure proxy.
+Home Bills is a small household expense tracker for Aleks and Ivan. It is a single-page web app hosted on GitHub Pages, with a Cloudflare Worker handling authentication and database access and Cloudflare D1 storing the data.
 
-No subscriptions. No backend servers. No app store. Just open the link and start tracking.
-
----
+It is designed for private household use: record shared bills, split them equally, register settlements, and carry any remaining balance safely from one month to the next.
 
 ## What it does
 
-Home Bills lets two people log shared household expenses via natural language, automatically splits the total 50/50, and always shows who owes whom and how much. Everything syncs in real time through a Cloudflare D1 database.
+- Records expenses using short, natural-language descriptions.
+- Tracks which person paid each bill.
+- Splits ordinary household bills 50/50.
+- Records direct payments between Aleks and Ivan as settlements.
+- Shows the current balance and who owes whom.
+- Groups spending by category.
+- Closes months and carries the final balance into the following month.
+- Reopens closed months safely when a correction is required.
+- Supports multiple years and optional custom sheets.
+- Uses a PIN-protected Cloudflare Worker for all database requests.
+- Provides responsive light and dark layouts without a build step.
 
----
+Data is shared through D1 and refreshed when the app loads or performs an action. The app does not use push updates, so another browser that is already open may need to be reloaded to display a change made elsewhere.
 
-## Features
+## Balance rules
 
-- **Natural language entry** — type expenses the way you'd say them out loud
-- **Date from input** — include "on dd/mm" to set a specific entry date
-- **Automatic 50/50 split** with real-time balance calculation
-- **Cash settlements** — record when one person pays the other directly
-- **Month close** — archives the month, writes a closing note, carries any balance to next month
-- **Reopen month** — reverse a close to fix missing or incorrect entries, then close again
-- **Custom sheets** — separate sheets for projects like house improvements
-- **Multi-year support** — add a new year with one click
-- **PIN authentication** via Cloudflare Worker
-- **Mobile friendly** — responsive layout, works on any device
-- **Dark mode** support
+Home Bills keeps three kinds of financial records separate:
 
----
+1. **Ordinary bills** count towards the amount paid by Aleks or Ivan and are split equally.
+2. **Settlements** are direct transfers between the two people. They adjust the outstanding balance but are not counted as household spending.
+3. **Balance carry-overs** contain the final balance from the previous month. They are applied once at their full value and are not divided by two or counted as a new bill.
 
-## How it's built
+Closing notes are display-only records and never participate in calculations.
+
+In simplified form, the balance is calculated as:
+
+```text
+(Aleks's bills - Ivan's bills) / 2
++ previous balance
+- payments Ivan sent to Aleks
++ payments Aleks sent to Ivan
+```
+
+A positive result means Ivan owes Aleks. A negative result means Aleks owes Ivan.
+
+## Closing and reopening months
+
+When a month is closed, the app performs the complete operation together:
+
+- Saves the month's final totals in `closed_months`.
+- Adds a closing note to the closed month.
+- Adds the outstanding balance to the next month as a carry-over, unless the balance is fully settled.
+- Prevents entries in the closed month from being added or deleted.
+
+The frontend blocks changes to closed months, and the Worker independently enforces the same rule.
+
+To preserve the balance chain, closed months must be reopened in reverse chronological order. If a later month is closed, it must be reopened before an earlier month. Reopening removes that month's closing note and the corresponding carry-over from the following month.
+
+## How it is built
 
 | Part | Technology |
 |---|---|
-| Frontend | Single HTML file, vanilla JS and CSS, no frameworks |
-| Hosting | GitHub Pages (free) |
-| Database | Cloudflare D1 — serverless SQLite (free, never pauses) |
-| Proxy / Auth | Cloudflare Worker (free) |
-| Fonts | DM Sans + DM Mono via Google Fonts |
+| Frontend | One `index.html` file with vanilla HTML, CSS, and JavaScript |
+| Hosting | GitHub Pages |
+| API and PIN validation | Cloudflare Worker |
+| Database | Cloudflare D1 (SQLite) |
+| Fonts | DM Sans and DM Mono from Google Fonts |
 
-No frameworks. No npm. No build step.
-
----
-
-## Architecture
-
-```
-Browser (GitHub Pages) → Cloudflare Worker → Cloudflare D1 (SQLite)
+```text
+Browser on GitHub Pages -> Cloudflare Worker -> Cloudflare D1
 ```
 
-Every request carries an `X-App-Pin` header. The Worker validates the PIN before querying D1. The PIN lives only in the Cloudflare Worker — never in this repository.
+There are no frameworks, package dependencies, build commands, or servers to manage.
 
----
-
-## Files in this repo
+## Repository files
 
 | File | Purpose |
 |---|---|
-| `index.html` | The entire app — HTML, CSS and JavaScript |
-| `worker.js` | Cloudflare Worker — paste into Cloudflare Worker editor |
-| `d1-schema.sql` | Run once in D1 console to create tables |
-| `README.md` | This file |
-| `archive/Code.gs` | Legacy Google Apps Script — no longer used |
+| `index.html` | Complete browser application, including its styles and JavaScript |
+| `worker.js` | Cloudflare Worker API, validation, PIN protection, and D1 operations |
+| `d1-schema.sql` | Initial D1 tables and indexes |
+| `README.md` | Project documentation |
+| `archive/Code.gs` | Legacy Google Apps Script retained for reference; it is not used by the current app |
 
----
+## Installation
 
-## Setup
+### 1. Create the D1 database
 
-### 1. Cloudflare D1 database
+1. Sign in to [Cloudflare](https://dash.cloudflare.com/).
+2. Open the Workers and D1 area and create a D1 database.
+3. Give the database a name such as `home-bills`.
+4. Open its SQL console.
+5. Run the statements in `d1-schema.sql`.
 
-1. Create a free account at [cloudflare.com](https://cloudflare.com)
-2. Go to **Workers & Pages → D1 → Create database**
-3. Name it `home-bills`
-4. Click on the database → **Console tab**
-5. Run each statement from `d1-schema.sql` one at a time
+The schema creates the `entries`, `closed_months`, and `custom_sheets` tables and their indexes.
 
-### 2. Cloudflare Worker
+### 2. Create the Cloudflare Worker
 
-1. Go to **Workers & Pages → Create → Start with Hello World**
-2. Name it `home-bills`
-3. Replace the code with the contents of `worker.js`
-4. Set the PIN at the top:
-   ```javascript
-   const VALID_PIN = 'your-chosen-pin';
-   ```
-5. Click **Save and deploy**
-6. Go to **Settings → Bindings → Add binding → D1 Database**
-7. Set Variable name: `DB`, select your `home-bills` D1 database
-8. Click **Add Binding**
-9. Copy your Worker URL (e.g. `https://your-worker.yourname.workers.dev`)
+1. Create a Worker, using a name such as `home-bills`.
+2. Replace its starter code with the complete contents of `worker.js`.
+3. Add a D1 database binding:
+   - Binding or variable name: `DB`
+   - Database: the D1 database created above
+4. Add an encrypted Worker secret:
+   - Name: `APP_PIN`
+   - Value: the private PIN that Aleks and Ivan will use
+5. Deploy the Worker and copy its `workers.dev` URL.
 
-### 3. Configure the app
+Cloudflare's menu labels can vary. The D1 binding and encrypted secret are normally found in the Worker's **Settings**, under **Bindings** and **Variables and Secrets**.
 
-1. Open `index.html` in a text editor
-2. Find this line near the top of the `<script>` section:
-   ```javascript
-   const WORKER_URL = 'YOUR_CLOUDFLARE_WORKER_URL_HERE';
-   ```
-3. Replace with your Worker URL
+Do not add the PIN to `worker.js`, `index.html`, this README, or any other committed file. The Worker reads it at runtime from `env.APP_PIN`.
 
-### 4. Host on GitHub Pages
+### 3. Connect the app to the Worker
 
-1. Create a new repository on GitHub
-2. Upload `index.html`, `worker.js`, `d1-schema.sql` and `README.md`
-3. Go to **Settings → Pages → Branch: main → Save**
-4. Your app will be live at `https://yourusername.github.io/your-repo`
+Open `index.html`, find the existing `WORKER_URL` setting near the beginning of the script, and replace its value with your own Worker URL:
 
-Share the URL with the other person — you both use the same link, everything syncs through the shared database.
+```javascript
+const WORKER_URL = 'https://your-worker.your-subdomain.workers.dev';
+```
 
----
+Do not add a trailing slash.
 
-## Updating the app
+### 4. Publish with GitHub Pages
 
-**index.html changes** — replace the file on GitHub, live within a minute. No other changes needed.
+1. Put `index.html`, `worker.js`, `d1-schema.sql`, and `README.md` in a GitHub repository.
+2. Open the repository's **Settings -> Pages**.
+3. Select the branch and folder that contain `index.html`.
+4. Save the Pages configuration and wait for deployment to finish.
+5. Open the published GitHub Pages URL and enter the `APP_PIN` value when prompted.
 
-**worker.js changes:**
-1. Go to Cloudflare → Workers → home-bills → Edit code
-2. Make changes → Save and deploy
-3. No changes needed to `index.html`
+Both people use the same published URL and PIN, and their data is stored in the same D1 database.
 
-**Database changes:**
-1. Go to Cloudflare → D1 → home-bills → Console
-2. Run the relevant `ALTER TABLE` or `CREATE TABLE` statements
-3. Update `worker.js` if new columns need to be mapped
+## Using the app
 
----
+### Add an ordinary bill
 
-## Natural language entry examples
+1. Select **Aleks** or **Ivan** above the entry field. This selector determines who paid; a person's name typed in the description does not change the payer.
+2. Choose the destination under **Save to**.
+3. Enter the amount and description.
+4. Check the preview and select **Add**.
 
-| What you type | What it does |
-|---|---|
-| `paid 1200 mortgage` | Aleks paid €1200, category: mortgage, today's date |
-| `Ivan paid 85 electricity` | Ivan paid €85, category: electricity |
-| `paid 85 electricity on 12/06` | Aleks paid €85, date set to 12/06 |
-| `paid 500 to Ivan ref mortgage` | Cash settlement: Aleks paid Ivan €500 |
-| `paid 27 network security` | Aleks paid €27, category: security |
+Examples:
 
----
+| Selection | Text entered | Result |
+|---|---|---|
+| Aleks | `paid 1200 mortgage` | Aleks paid a EUR 1,200 mortgage bill today |
+| Ivan | `paid 85 electricity` | Ivan paid an EUR 85 electricity bill today |
+| Aleks | `paid 85 electricity on 12/06/2026` | Aleks paid an EUR 85 electricity bill on 12 June 2026 |
+| Aleks | `paid 27 network security` | Aleks paid an EUR 27 security bill |
 
-## Category keywords
+The amount may use a decimal point or comma. It must be greater than zero.
 
-| Category | Keywords |
+Dates may use `/`, `-`, or `.` and can be written as `dd/mm`, `dd/mm/yy`, or `dd/mm/yyyy`, optionally preceded by `on`. When no date is supplied, the current date is used. Invalid calendar dates and invalid, zero, or negative amounts are rejected with a specific message.
+
+### Add a settlement
+
+Select the person sending the money, then name the recipient in the entry:
+
+| Selection | Text entered | Result |
+|---|---|---|
+| Ivan | `paid 500 to Aleks ref mortgage` | Ivan sent Aleks EUR 500 |
+| Aleks | `paid 200 to Ivan` | Aleks sent Ivan EUR 200 |
+
+The optional text after `ref` becomes the settlement description. Settlements reduce or reverse the outstanding balance as appropriate; they do not increase either person's bill total.
+
+### View the data
+
+- **Entries** shows the records and bill totals for the selected month or custom sheet.
+- **By category** groups ordinary bills by their detected category. Settlements, carry-overs, and closing notes are excluded.
+- **Closed months** shows the saved results for all closed months.
+
+### Add a year or custom sheet
+
+**New year** makes all twelve virtual monthly views available for the selected year. A year with saved entries is loaded from D1 on future visits. **New sheet** creates a separately named custom sheet, useful for a project or another collection of costs. Custom sheets are not part of the monthly close-and-carry-over chain.
+
+## Automatic categories
+
+The app checks the cleaned description for the following keywords:
+
+| Category | Recognised keywords |
 |---|---|
 | mortgage | mortgage, hipoteca |
-| internet | internet, broadband, wifi, fibre, fiber |
+| internet | internet, broadband, wifi, wi-fi, fibre, fiber, router, eir internet |
 | insurance | insurance, house insurance, home insurance |
-| security | security, alarm, cctv |
-| electricity | electricity, electric, energy |
+| security | security, alarm, cctv, camera, cameras, eufy |
+| electricity | electricity, electric, energy, electric ireland |
 | water | water |
 | gas | gas, heating |
 | groceries | groceries, supermarket, food, shopping, lidl, aldi |
@@ -153,14 +189,37 @@ Share the URL with the other person — you both use the same link, everything s
 | phone | phone, mobile, vodafone, nos, meo |
 | cleaning | cleaning, cleaner |
 | maintenance | maintenance, repair, fix, plumber |
+| garden | garden, grass, lawn, outdoor, b&q chairs, bbq |
+| house | lamp, ikea, furniture, house, floor, flooring, stairs, carpet, kitchen |
+| messi | messi, butternut, dog, pet, petshop |
 
-If no keyword matches, the most descriptive word in your entry is used as the category.
+Matching is case-insensitive. If no keyword matches, the app uses a suitable word from the description as the category, or `other` when none is available.
 
----
+## Updating the app
 
-## Security
+### Frontend changes
 
-- The PIN is stored **only** in the Cloudflare Worker — never in this repository
-- All requests require the correct PIN via the `X-App-Pin` header
-- The PIN is stored in the browser's localStorage and sent automatically after first login
-- D1 is only accessible via the Worker — there are no public API keys exposed
+Update `index.html` in the GitHub Pages source branch. GitHub Pages normally republishes it automatically.
+
+### Worker changes
+
+Keep the repository's `worker.js` and the deployed Cloudflare Worker code identical. After changing the file, copy or deploy the updated Worker code in Cloudflare and verify the deployment.
+
+### Database changes
+
+Back up the current D1 data before structural or corrective changes. Run only the required SQL in the D1 console and verify the affected rows afterwards. `d1-schema.sql` describes a new installation; it is not a replacement for a populated database.
+
+## Security notes
+
+- The private PIN is stored as the encrypted Cloudflare Worker secret `APP_PIN`, not in this repository.
+- Every API request must supply the PIN in the `X-App-Pin` header.
+- After a successful login, the browser keeps the PIN in `localStorage` so it can authenticate later requests.
+- D1 is reached through the Worker; the browser contains no D1 credentials or public database key.
+- The Worker validates entries, settlements, dates, identifiers, custom sheet names, close requests, and reopen requests before changing D1.
+- CORS permits the browser frontend to call the Worker from GitHub Pages.
+
+This is a practical access gate for a trusted household app, not a multi-user identity system. Use a unique PIN that is not reused for an important account, and avoid using the app on an untrusted shared device because the PIN remains in that browser's local storage.
+
+## Backup
+
+For this small dataset, exporting the D1 tables to CSV before database corrections or schema changes provides a simple additional backup. Keep backups somewhere private because they contain household financial information.
