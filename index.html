@@ -1772,8 +1772,33 @@
       return r.json();
     }
     async function POST(body) {
-      const r = await fetch(WORKER_URL, {method: 'POST', body: JSON.stringify(body), headers: {'Content-Type': 'application/json', 'X-App-Pin': getPin()}});
-      return r.json();
+      const r = await fetch(WORKER_URL, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Pin': getPin()
+        }
+      });
+
+      let data;
+
+      try {
+        data = await r.json();
+      } catch (e) {
+        throw new Error(`Invalid server response (${r.status})`);
+      }
+
+      if (!r.ok || data.error) {
+        const error = new Error(
+          data.error || `Request failed (${r.status})`
+        );
+
+        error.status = r.status;
+        throw error;
+      }
+
+      return data;
     }
     function sync(state) {
       const d = document.getElementById('sd'), l = document.getElementById('sl');
