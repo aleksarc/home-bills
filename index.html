@@ -1083,7 +1083,11 @@ function renderTable(){
   </div>`;
 }
 function renderCats(){
-  const me=visible().filter(e=>!e.isTransfer);
+  const me=visible().filter(
+    e=>!e.isTransfer &&
+       !e.isClosingNote &&
+       e.cat!=='balance carry-over'
+  );
   const cs={};for(const e of me){cs[e.cat]=(cs[e.cat]||0)+e.amount;}
   const sorted=Object.entries(cs).sort((a,b)=>b[1]-a[1]);
   const max=sorted[0]?.[1]||1;
