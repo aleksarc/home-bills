@@ -194,6 +194,125 @@ export default {
           return cors(JSON.stringify({ success: true }), 200);
         }
 
+        if (action === 'closeMonthAtomic') {
+          const d = body.monthData;
+          const note = body.closingNote;
+          const carry = body.carryOver || null;
+          const { nextMonth, nextYear, nextSheet } = body;
+
+          if (!d || !note || !nextMonth || !nextYear || !nextSheet) {
+            return cors(JSON.stringify({ error: 'Invalid close month data' }), 400);
+          }
+
+          const statements = [
+            db.prepare(
+              `INSERT INTO closed_months (
+                month,
+                year,
+                aleks_spend,
+                ivan_spend,
+                total_bills,
+                net_diff,
+                settled,
+                closed_at
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(month, year) DO UPDATE SET
+                aleks_spend = excluded.aleks_spend,
+                ivan_spend  = excluded.ivan_spend,
+                total_bills = excluded.total_bills,
+                net_diff    = excluded.net_diff,
+                settled     = excluded.settled,
+                closed_at   = excluded.closed_at`
+            ).bind(
+              d.month,
+              d.year,
+              d.aleksSpend,
+              d.ivanSpend,
+              d.totalBills,
+              d.netDiff,
+              d.settled ? 1 : 0,
+              d.closedAt
+            ),
+
+            db.prepare(
+              'DELETE FROM entries WHERE sheet = ? AND is_closing_note = 1'
+            ).bind(note.sheet),
+
+            db.prepare(
+              `DELETE FROM entries
+               WHERE sheet = ?
+                 AND category = 'balance carry-over'`
+            ).bind(nextSheet),
+
+            db.prepare(
+              `INSERT INTO entries (
+                date,
+                description,
+                category,
+                who,
+                amount,
+                is_transfer,
+                to_who,
+                month,
+                year,
+                sheet,
+                is_closing_note
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            ).bind(
+              note.date,
+              note.desc,
+              note.cat,
+              note.who,
+              note.amount,
+              note.isTransfer ? 1 : 0,
+              note.toWho || '',
+              note.month,
+              note.year,
+              note.sheet,
+              note.isClosingNote ? 1 : 0
+            ),
+          ];
+
+          if (carry) {
+            statements.push(
+              db.prepare(
+                `INSERT INTO entries (
+                  date,
+                  description,
+                  category,
+                  who,
+                  amount,
+                  is_transfer,
+                  to_who,
+                  month,
+                  year,
+                  sheet,
+                  is_closing_note
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              ).bind(
+                carry.date,
+                carry.desc,
+                carry.cat,
+                carry.who,
+                carry.amount,
+                carry.isTransfer ? 1 : 0,
+                carry.toWho || '',
+                carry.month,
+                carry.year,
+                carry.sheet,
+                carry.isClosingNote ? 1 : 0
+              )
+            );
+          }
+
+          await db.batch(statements);
+
+          return cors(JSON.stringify({ success: true }), 200);
+        }
+
         if (action === 'reopenMonth') {
           const { month, year, nextMonth, nextYear } = body;
           const sheet = `${year} - ${month}`;
