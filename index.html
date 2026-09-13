@@ -1744,7 +1744,7 @@
         .replace(/\bon\s+\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/gi, '')
         .replace(/\b\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/g, '')
         .trim() || 'expense';
-      const cat = isT ? 'settlement' : detCat(t + ' ' + desc);
+      const cat = isT ? 'settlement' : detCat(desc);
       const sheet = document.getElementById('toSel')?.value || curSheet();
       const sheetParts = sheet.split(' - ');
       const isMonthSheet =
