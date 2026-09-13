@@ -1655,7 +1655,7 @@
     const CUR_MONTH = MONTHS[now.getMonth()];
     const CUR_YEAR = now.getFullYear();
 
-    let who = 'Aleks', postponed = false, saving = false;
+    let who = 'Aleks', postponed = false, saving = false, closingMonth = false;
     let view = CUR_YEAR + ' - ' + CUR_MONTH; // e.g. "2026 - May"
     let custom = [];
     let years = []; // e.g. [2026, 2027]
@@ -1956,6 +1956,17 @@
 
     // ── Close month ──────────────────────────────────────
     async function doCloseMonth() {
+      if (closingMonth) return;
+
+      closingMonth = true;
+
+      const closeButtons = document.querySelectorAll(
+        '.btn-cls, #closeMonthBtn'
+      );
+
+      closeButtons.forEach(button => {
+        button.disabled = true;
+      });
       const viewYear = parseInt(view.split(' - ')[0]);
       const viewMonth = view.split(' - ')[1];
       const viewSheet = view;
@@ -2042,7 +2053,16 @@
         view = mSheet(nYear, MONTHS[nextIdx]);
         if (!cache[view]) await loadSheet(view);
         sync('ok'); render();
-      } catch (e) {sync('err'); toast('Close failed. Try again.');}
+      } catch (e) {
+        sync('err');
+        toast('Close failed. Try again.');
+      } finally {
+        closingMonth = false;
+
+        closeButtons.forEach(button => {
+          button.disabled = false;
+        });
+      }
     }
 
     // ── Reopen month ─────────────────────────────────────
