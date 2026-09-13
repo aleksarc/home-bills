@@ -59,18 +59,18 @@ export default {
           }
 
           const entries = result.results.map(row => ({
-            rowIndex:      row.id,
-            date:          row.date,
-            desc:          row.description,
-            cat:           row.category,
-            who:           row.who,
-            amount:        row.amount,
-            isTransfer:    row.is_transfer === 1,
-            toWho:         row.to_who || '',
-            month:         row.month,
-            year:          row.year,
+            rowIndex: row.id,
+            date: row.date,
+            desc: row.description,
+            cat: row.category,
+            who: row.who,
+            amount: row.amount,
+            isTransfer: row.is_transfer === 1,
+            toWho: row.to_who || '',
+            month: row.month,
+            year: row.year,
             isClosingNote: row.is_closing_note === 1,
-            sheet:         row.sheet,
+            sheet: row.sheet,
           })).sort((a, b) => {
             if (a.cat === 'balance carry-over') return -1;
             if (b.cat === 'balance carry-over') return 1;
@@ -89,14 +89,14 @@ export default {
           ).all();
 
           const closedMonths = result.results.map(row => ({
-            month:      row.month,
-            year:       row.year,
+            month: row.month,
+            year: row.year,
             aleksSpend: row.aleks_spend,
-            ivanSpend:  row.ivan_spend,
+            ivanSpend: row.ivan_spend,
             totalBills: row.total_bills,
-            netDiff:    row.net_diff,
-            settled:    row.settled === 1,
-            closedAt:   row.closed_at,
+            netDiff: row.net_diff,
+            settled: row.settled === 1,
+            closedAt: row.closed_at,
           }));
 
           return cors(JSON.stringify({ closedMonths }), 200);
@@ -315,29 +315,36 @@ export default {
 
         if (action === 'reopenMonth') {
           const { month, year, nextMonth, nextYear } = body;
+
+          if (!month || !year || !nextMonth || !nextYear) {
+            return cors(JSON.stringify({ error: 'Invalid reopen month data' }), 400);
+          }
+
           const sheet = `${year} - ${month}`;
           const nextSheet = `${nextYear} - ${nextMonth}`;
 
-          await db.prepare(
-            'DELETE FROM entries WHERE sheet = ? AND is_closing_note = 1'
-          ).bind(sheet).run();
+          await db.batch([
+            db.prepare(
+              'DELETE FROM entries WHERE sheet = ? AND is_closing_note = 1'
+            ).bind(sheet),
 
-          await db.prepare(
-            `DELETE FROM entries
-             WHERE sheet = ?
-               AND category = ?
-               AND month = ?
-               AND year = ?`
-          ).bind(
-            nextSheet,
-            'balance carry-over',
-            nextMonth,
-            nextYear
-          ).run();
+            db.prepare(
+              `DELETE FROM entries
+       WHERE sheet = ?
+         AND category = ?
+         AND month = ?
+         AND year = ?`
+            ).bind(
+              nextSheet,
+              'balance carry-over',
+              nextMonth,
+              nextYear
+            ),
 
-          await db.prepare(
-            'DELETE FROM closed_months WHERE month = ? AND year = ?'
-          ).bind(month, year).run();
+            db.prepare(
+              'DELETE FROM closed_months WHERE month = ? AND year = ?'
+            ).bind(month, year),
+          ]);
 
           return cors(JSON.stringify({ success: true }), 200);
         }
