@@ -1657,6 +1657,7 @@
     const CUR_YEAR = now.getFullYear();
 
     let who = 'Aleks', postponed = false, saving = false, closingMonth = false;
+    let parseError = '';
     let view = CUR_YEAR + ' - ' + CUR_MONTH; // e.g. "2026 - May"
     let custom = [];
     let years = []; // e.g. [2026, 2027]
@@ -1735,12 +1736,26 @@
     }
 
     function parse(text, pw) {
-      const t = text.trim(); if (!t) return null;
+      parseError = '';
+      const t = text.trim();
+      if (!t) return null;
       // Extract amount — but skip date-like patterns (dd/mm) first
       const noDate = t.replace(/\bon\s+\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/gi, '')
         .replace(/\b\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?\b/g, '');
-      const am = noDate.match(/[\d]+(?:[.,]\d{1,2})?/); if (!am) return null;
+      if (/[-−]\s*€?\s*\d/.test(noDate)) {
+        parseError = 'Amount must be greater than zero.';
+        return null;
+      }
+      const am = noDate.match(/[-+]?\d+(?:[.,]\d{1,2})?/);
+      if (!am) {
+        parseError = 'Invalid amount.';
+        return null;
+      }
       const amount = parseFloat(am[0].replace(',', '.'));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        parseError = 'Amount must be greater than zero.';
+        return null;
+      }
       const isT = /paid\s+(?:to\s+)?(aleks|ivan)/i.test(t) || /\bto\s+(aleks|ivan)\b/i.test(t);
       let toWho = null;
       if (isT) {
@@ -1770,7 +1785,10 @@
       // Reject an invalid supplied date; otherwise use it or default to today.
       const suppliedDate = matchDate(t);
       const detectedDate = detDate(t, year);
-      if (suppliedDate && !detectedDate) return null;
+      if (suppliedDate && !detectedDate) {
+        parseError = 'Invalid date.';
+        return null;
+      }
       const entryDate = detectedDate || fmtDate(new Date());
 
       return {
@@ -1782,7 +1800,11 @@
       const p = document.getElementById('prev');
       if (!val.trim()) {p.className = 'preview'; return;}
       const r = parse(val, who);
-      if (!r) {p.className = 'preview on'; p.innerHTML = '<span class="perr">Couldn\'t parse. Try: "paid 85 electricity" or "paid 500 to Ivan ref mortgage"</span>'; return;}
+      if (!r) {
+        p.className = 'preview on';
+        p.innerHTML = `<span class="perr">${esc(parseError || 'Could not parse entry.')}</span>`;
+        return;
+      }
       const note = r.isTransfer ? ` — reduces what ${esc(r.toWho)} owes` : '';
       const dateNote = matchDate(val) ? ` · ${esc(r.date)}` : '';
       p.className = 'preview on';
@@ -1952,7 +1974,7 @@
       if (!val || saving) return;
       const e = parse(val, who);
       if (!e) {
-        toast('Could not parse. Please try again.');
+        toast(parseError || 'Could not parse entry.');
         return;
       }
 
