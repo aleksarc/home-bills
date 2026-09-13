@@ -986,7 +986,9 @@ function renderTable(){
       </tr>`;
     }
     const ia=e.who==='Aleks';
-    if(!e.isClosingNote){ia?as+=e.amount:iv+=e.amount;}
+    if(!e.isTransfer && e.cat!=='balance carry-over'){
+      ia ? as += e.amount : iv += e.amount;
+    }
     let ac,ic;
     if(e.isTransfer){
       ac=ia?`<td class="damt aa">€${e.amount.toFixed(2)}</td>`:`<td class="damt mt">—</td>`;
@@ -1023,7 +1025,9 @@ function renderTable(){
       return`<div class="ec-closing">${cap(e.desc)}</div>`;
     }
     const ia=e.who==='Aleks';
-    if(!e.isClosingNote){ia?mas+=e.amount:miv+=e.amount;}
+    if(!e.isTransfer && e.cat!=='balance carry-over'){
+      ia ? mas += e.amount : miv += e.amount;
+    }
     const desc=e.isTransfer?`→ Transfer to ${e.toWho}: ${cap(e.desc)}`:cap(e.desc);
     const canDel=e.rowIndex!==null&&e.rowIndex!==undefined;
     const mh=isC?`<span class="ec-date"> · ${e.month}</span>`:'';
