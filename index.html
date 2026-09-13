@@ -1967,95 +1967,129 @@
       closeButtons.forEach(button => {
         button.disabled = true;
       });
-      const viewYear = parseInt(view.split(' - ')[0]);
+
+      const viewYear = parseInt(view.split(' - ')[0], 10);
       const viewMonth = view.split(' - ')[1];
       const viewSheet = view;
-
       const b = calcBal();
       const settled = Math.abs(b.netDiff) < 0.02;
+
+      const nextMonthIdx = (MONTHS.indexOf(viewMonth) + 1) % 12;
+      const nextMonth = MONTHS[nextMonthIdx];
+      const nextYear = nextMonthIdx === 0 ? viewYear + 1 : viewYear;
+      const nextSheetName = mSheet(nextYear, nextMonth);
+
+      // Closing note = last day of viewed month; carry-over = first day of next month.
+      const firstOfNext = `01/${String(nextMonthIdx + 1).padStart(2, '0')}/${nextYear}`;
+      const lastOfCurrent = fmtDate(new Date(nextYear, nextMonthIdx, 0));
+
       const data = {
-        month: viewMonth, year: viewYear, aleksSpend: b.aleksSpend, ivanSpend: b.ivanSpend,
-        totalBills: b.totalBills, netDiff: b.netDiff, settled,
+        month: viewMonth,
+        year: viewYear,
+        aleksSpend: b.aleksSpend,
+        ivanSpend: b.ivanSpend,
+        totalBills: b.totalBills,
+        netDiff: b.netDiff,
+        settled,
         closedAt: new Date().toISOString()
       };
+
+      let closingNote;
+      let carryOver = null;
+
+      if (settled) {
+        closingNote = {
+          who: '',
+          amount: 0,
+          desc: 'Balance forward: fully settled',
+          month: viewMonth,
+          year: viewYear,
+          cat: 'closing note',
+          isTransfer: false,
+          isClosingNote: true,
+          toWho: '',
+          date: lastOfCurrent,
+          sheet: viewSheet,
+        };
+      } else {
+        const owesAmt = Math.abs(b.netDiff);
+
+        // netDiff > 0 means Ivan owes Aleks; netDiff < 0 means Aleks owes Ivan.
+        const creditorWho = b.netDiff > 0 ? 'Aleks' : 'Ivan';
+        const debtorWho = b.netDiff > 0 ? 'Ivan' : 'Aleks';
+
+        closingNote = {
+          who: debtorWho,
+          amount: owesAmt,
+          desc: `Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
+          month: viewMonth,
+          year: viewYear,
+          cat: 'closing note',
+          isTransfer: false,
+          isClosingNote: true,
+          toWho: creditorWho,
+          date: lastOfCurrent,
+          sheet: viewSheet,
+        };
+
+        carryOver = {
+          who: creditorWho,
+          amount: owesAmt,
+          desc: `Balance from ${viewMonth} ${viewYear}`,
+          month: nextMonth,
+          year: nextYear,
+          cat: 'balance carry-over',
+          isTransfer: false,
+          isClosingNote: false,
+          toWho: '',
+          date: firstOfNext,
+          sheet: nextSheetName,
+        };
+      }
+
       sync('loading');
+
       try {
-        await POST({action: 'closeMonth', monthData: data});
+        await POST({
+          action: 'closeMonthAtomic',
+          monthData: data,
+          closingNote,
+          carryOver,
+          nextMonth,
+          nextYear,
+          nextSheet: nextSheetName,
+        });
+
+        // Only change local state after the entire database transaction succeeded.
+        closed = closed.filter(item => !(
+          item.month === viewMonth && parseInt(item.year, 10) === viewYear
+        ));
         closed.push(data);
 
-        if (!settled) {
-          const owesAmt = Math.abs(b.netDiff);
-          const nextMonthIdx = (MONTHS.indexOf(viewMonth) + 1) % 12;
-          const nextMonth = MONTHS[nextMonthIdx];
-          const nextYear = nextMonthIdx === 0 ? viewYear + 1 : viewYear;
-          const nextSheetName = mSheet(nextYear, nextMonth);
-
-          // Date helpers — closing note = last day of viewed month, carry-over = 1st of next month
-          const nextMonthNum = nextMonthIdx + 1;
-          const firstOfNext = `01/${String(nextMonthNum).padStart(2, '0')}/${nextYear}`;
-          const lastOfCurrent = fmtDate(new Date(viewYear, nextMonthIdx, 0)); // day 0 = last day of prev month
-
-          // netDiff > 0 → Ivan owes Aleks → carry-over appears as Aleks's bill (creditor paid more)
-          // netDiff < 0 → Aleks owes Ivan → carry-over appears as Ivan's bill
-          const creditorWho = b.netDiff > 0 ? 'Aleks' : 'Ivan';
-          const debtorWho = b.netDiff > 0 ? 'Ivan' : 'Aleks';
-
-          // Closing note in viewed month (display only, no calc impact)
-          await POST({
-            action: 'addEntry', entry: {
-              who: debtorWho, amount: owesAmt,
-              desc: `Balance forward: ${debtorWho} owes ${creditorWho} €${owesAmt.toFixed(2)}`,
-              month: viewMonth, year: viewYear, cat: 'closing note',
-              isTransfer: false, isClosingNote: true, toWho: creditorWho,
-              date: lastOfCurrent, sheet: viewSheet,
-            }
-          });
-
-          // Carry-over in next month — dated 1st of next month so it sorts first
-          // Stored as regular bill attributed to creditor so balance calc picks it up correctly
-          await POST({
-            action: 'addEntry', entry: {
-              who: creditorWho, amount: owesAmt,
-              desc: `Balance from ${viewMonth} ${viewYear}`,
-              month: nextMonth, year: nextYear, cat: 'balance carry-over',
-              isTransfer: false, isClosingNote: false, toWho: '',
-              date: firstOfNext, sheet: nextSheetName,
-            }
-          });
-
-          if (nextYear !== viewYear && !years.includes(nextYear)) {
-            await POST({action: 'addYear', year: nextYear});
-            years.push(nextYear); years.sort();
-          }
-          delete cache[nextSheetName];
-          toast(`${viewMonth} closed · €${owesAmt.toFixed(2)} carried to ${nextMonth} ${nextYear}`);
-        } else {
-          await POST({
-            action: 'addEntry', entry: {
-              who: '', amount: 0,
-              desc: 'Balance forward: fully settled',
-              month: viewMonth, year: viewYear, cat: 'closing note',
-              isTransfer: false, isClosingNote: true, toWho: '',
-              date: fmtDate(new Date()), sheet: viewSheet,
-            }
-          });
-          toast(`${viewMonth} closed — fully settled!`);
+        if (nextYear !== viewYear && !years.includes(nextYear)) {
+          years.push(nextYear);
+          years.sort();
         }
 
-        // Reload closed month so closing note appears, don't wipe cache
+        // Reload both affected months from the database.
         delete cache[viewSheet];
+        delete cache[nextSheetName];
         await loadSheet(viewSheet);
+        await loadSheet(nextSheetName);
 
         document.getElementById('alert').style.display = 'none';
-        // Switch view to next month
-        const nextIdx = (MONTHS.indexOf(viewMonth) + 1) % 12;
-        const nYear = nextIdx === 0 ? viewYear + 1 : viewYear;
-        view = mSheet(nYear, MONTHS[nextIdx]);
-        if (!cache[view]) await loadSheet(view);
-        sync('ok'); render();
+        view = nextSheetName;
+        sync('ok');
+        render();
+
+        if (settled) {
+          toast(`${viewMonth} closed — fully settled!`);
+        } else {
+          toast(`${viewMonth} closed · €${Math.abs(b.netDiff).toFixed(2)} carried to ${nextMonth} ${nextYear}`);
+        }
       } catch (e) {
         sync('err');
-        toast('Close failed. Try again.');
+        toast('Close failed. No changes were saved. Try again.');
       } finally {
         closingMonth = false;
 
