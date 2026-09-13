@@ -2557,7 +2557,6 @@
       <div style="font-weight:500">${esc(m.month)} ${esc(m.year)}</div>
       <div style="font-size:12px;color:var(--text2)">Aleks €${(+m.aleksSpend).toFixed(2)} · Ivan €${(+m.ivanSpend).toFixed(2)} · Total €${(+m.totalBills).toFixed(2)}</div>
     </div>
-    <div style="font-size:12px;font-family:var(--fm);font-weight:600;color:${m.settled ? 'var(--ivan-text)' : '#993C1D'}">${m.settled ? 'Settled' : 'Open'}</div>
   </div>`).join('');
     }
     function checkAlert() {
