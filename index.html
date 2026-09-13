@@ -508,6 +508,21 @@ let closed=[];
 // Sheet name helpers
 function mSheet(year,month){return year+' - '+month;}
 function curSheet(){return mSheet(CUR_YEAR,CUR_MONTH);}
+function isClosedSheet(sheetName){
+  if(custom.includes(sheetName))return false;
+
+  const parts=sheetName.split(' - ');
+  if(parts.length!==2)return false;
+
+  const year=parseInt(parts[0],10);
+  const month=parts[1];
+
+  if(!MONTHS.includes(month)||!year)return false;
+
+  return closed.some(
+    c=>c.month===month && parseInt(c.year,10)===year
+  );
+}
 
 // ── Category / month detection ───────────────────────
 const CATS={
@@ -698,8 +713,16 @@ async function submit(){
   const val=ta.value.trim();
   if(!val||saving)return;
   const e=parse(val,who);
-  if(!e){toast('Could not parse. Please try again.');return;}
-  saving=true;sync('loading');
+if(!e){
+  toast('Could not parse. Please try again.');
+  return;
+}
+
+if(isClosedSheet(e.sheet)){
+  toast('This month is closed. Reopen it before adding entries.');
+  return;
+}
+saving=true;sync('loading');
   document.getElementById('addBtn').disabled=true;
   if(!cache[e.sheet])cache[e.sheet]=[];
   cache[e.sheet].unshift({...e,rowIndex:null});
