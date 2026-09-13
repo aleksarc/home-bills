@@ -1463,8 +1463,8 @@
       <div class="login-sub">Enter your PIN to continue</div>
       <form id="loginForm" onsubmit="submitPin(event)" autocomplete="on" method="dialog">
         <input type="text" name="username" value="homebills" autocomplete="username" style="display:none" readonly />
-        <input type="password" id="pinInput" name="password" autocomplete="current-password" placeholder="••••••"
-          maxlength="6" inputmode="numeric" />
+        <input type="password" id="pinInput" name="password" autocomplete="current-password" autocapitalize="none"
+          spellcheck="false" inputmode="text" placeholder="Enter PIN" />
         <div class="login-err" id="pinErr"></div>
         <button type="submit" class="login-submit">Unlock</button>
       </form>
