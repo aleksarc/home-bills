@@ -1769,10 +1769,10 @@
       if (!val.trim()) {p.className = 'preview'; return;}
       const r = parse(val, who);
       if (!r) {p.className = 'preview on'; p.innerHTML = '<span class="perr">Couldn\'t parse. Try: "paid 85 electricity" or "paid 500 to Ivan ref mortgage"</span>'; return;}
-      const note = r.isTransfer ? ` — reduces what ${r.toWho} owes` : '';
-      const dateNote = detDate(val) ? ` · ${r.date}` : '';
+      const note = r.isTransfer ? ` — reduces what ${esc(r.toWho)} owes` : '';
+      const dateNote = detDate(val) ? ` · ${esc(r.date)}` : '';
       p.className = 'preview on';
-      p.innerHTML = `<span class="pok">✓ ${r.who} · €${r.amount.toFixed(2)} · ${r.cat}${note} · ${r.month}${dateNote}</span>`;
+      p.innerHTML = `<span class="pok">✓ ${esc(r.who)} · €${r.amount.toFixed(2)} · ${esc(r.cat)}${note} · ${esc(r.month)}${dateNote}</span>`;
     }
 
     // ── API ──────────────────────────────────────────────
@@ -2361,7 +2361,7 @@
         groups.push({l: String(y), o: MONTHS.map(m => mSheet(y, m))});
       });
       if (custom.length) groups.push({l: 'Custom sheets', o: custom});
-      el.innerHTML = groups.map(g => `<optgroup label="${g.l}">` + g.o.map(o => `<option value="${o}"${o === cur ? ' selected' : ''}>${o.includes(' - ') ? o.split(' - ')[1] : o}</option>`).join('') + `</optgroup>`).join('');
+      el.innerHTML = groups.map(g => `<optgroup label="${esc(g.l)}">` + g.o.map(o => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${esc(o.includes(' - ') ? o.split(' - ')[1] : o)}</option>`).join('') + `</optgroup>`).join('');
       if (!el.value && groups[0]) el.value = groups[0].o[0];
     }
     function buildToSel() {
@@ -2372,7 +2372,7 @@
         groups.push({l: String(y), o: MONTHS.map(m => mSheet(y, m))});
       });
       if (custom.length) groups.push({l: 'Custom sheets', o: custom});
-      el.innerHTML = groups.map(g => `<optgroup label="${g.l}">` + g.o.map(o => `<option value="${o}"${o === cur ? ' selected' : ''}>${o.includes(' - ') ? o.split(' - ')[1] : o}</option>`).join('') + `</optgroup>`).join('');
+      el.innerHTML = groups.map(g => `<optgroup label="${esc(g.l)}">` + g.o.map(o => `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${esc(o.includes(' - ') ? o.split(' - ')[1] : o)}</option>`).join('') + `</optgroup>`).join('');
       updateEntryLock();
     }
     function renderBals() {
@@ -2405,11 +2405,13 @@
       const tb = document.getElementById('tBody'), tf = document.getElementById('tFoot');
       const mc = document.getElementById('mCards');
       const viewLabel = view.includes(' - ') ? view.split(' - ')[1] : view;
+      const safeViewLabel = esc(viewLabel);
+      const viewArg = jsString(view);
 
       if (!me.length) {
-        tb.innerHTML = `<tr><td colspan="6"><div class="empty">No entries for ${viewLabel} yet.</div></td></tr>`;
+        tb.innerHTML = `<tr><td colspan="6"><div class="empty">No entries for ${safeViewLabel} yet.</div></td></tr>`;
         tf.innerHTML = '';
-        mc.innerHTML = `<div class="empty">No entries for ${viewLabel} yet.</div>`;
+        mc.innerHTML = `<div class="empty">No entries for ${safeViewLabel} yet.</div>`;
         return;
       }
 
@@ -2420,8 +2422,8 @@
       tb.innerHTML = me.map((e, li) => {
         if (e.isClosingNote) {
           return `<tr class="closing-note">
-        <td class="ddate">${parseDate(e.date)}</td>
-        <td class="cn-desc" colspan="3">${cap(e.desc)}</td>
+        <td class="ddate">${esc(parseDate(e.date))}</td>
+        <td class="cn-desc" colspan="3">${esc(cap(e.desc))}</td>
         <td></td><td></td>
       </tr>`;
         }
@@ -2438,22 +2440,23 @@
           ic = !ia ? `<td class="damt ia">€${e.amount.toFixed(2)}</td>` : `<td class="damt mt">—</td>`;
         }
         const desc = e.isTransfer ? `→ Transfer to ${e.toWho}: ${cap(e.desc)}` : cap(e.desc);
-        const mh = isC ? `<span class="dmonth">${e.month}</span>` : '';
+        const safeDesc = esc(desc);
+        const mh = isC ? `<span class="dmonth">${esc(e.month)}</span>` : '';
         const canDel =
           e.rowIndex !== null &&
           e.rowIndex !== undefined &&
           !isClosedSheet(view);
         return `<tr class="${e.isTransfer ? 'xfer' : ''}">
-      <td class="ddate">${parseDate(e.date)}${mh}</td>
-      <td class="ddesc" title="${desc}">${desc}</td>
-      <td class="dcat"><span class="${e.isTransfer ? 'stl' : ''}">${e.cat}</span></td>
+      <td class="ddate">${esc(parseDate(e.date))}${mh}</td>
+      <td class="ddesc" title="${safeDesc}">${safeDesc}</td>
+      <td class="dcat"><span class="${e.isTransfer ? 'stl' : ''}">${esc(e.cat)}</span></td>
       ${ac}${ic}
-      <td style="text-align:center">${canDel ? `<button class="del-btn" onclick="del('${view}',${e.rowIndex},${li})">✕</button>` : ''}</td>
+      <td style="text-align:center">${canDel ? `<button class="del-btn" onclick="del(${viewArg},${e.rowIndex},${li})">✕</button>` : ''}</td>
     </tr>`;
       }).join('');
 
       tf.innerHTML = `<tr>
-    <td colspan="3" style="color:var(--text2);font-size:12px;padding:10px 12px;border-top:var(--bd2);background:var(--bg2);font-weight:600">Bills total — ${viewLabel}</td>
+    <td colspan="3" style="color:var(--text2);font-size:12px;padding:10px 12px;border-top:var(--bd2);background:var(--bg2);font-weight:600">Bills total — ${safeViewLabel}</td>
     <td class="damt aa" style="padding:10px 12px;border-top:var(--bd2);background:var(--bg2);font-weight:600">€${as.toFixed(2)}</td>
     <td class="damt ia" style="padding:10px 12px;border-top:var(--bd2);background:var(--bg2);font-weight:600">€${iv.toFixed(2)}</td>
     <td style="border-top:var(--bd2);background:var(--bg2)"></td>
@@ -2465,18 +2468,19 @@
       // ── Mobile cards ──
       mc.innerHTML = me.map((e, li) => {
         if (e.isClosingNote) {
-          return `<div class="ec-closing">${cap(e.desc)}</div>`;
+          return `<div class="ec-closing">${esc(cap(e.desc))}</div>`;
         }
         const ia = e.who === 'Aleks';
         if (!e.isTransfer && e.cat !== 'balance carry-over') {
           ia ? mas += e.amount : miv += e.amount;
         }
         const desc = e.isTransfer ? `→ Transfer to ${e.toWho}: ${cap(e.desc)}` : cap(e.desc);
+        const safeDesc = esc(desc);
         const canDel =
           e.rowIndex !== null &&
           e.rowIndex !== undefined &&
           !isClosedSheet(view);
-        const mh = isC ? `<span class="ec-date"> · ${e.month}</span>` : '';
+        const mh = isC ? `<span class="ec-date"> · ${esc(e.month)}</span>` : '';
 
         let amtHtml = '';
         if (e.isTransfer) {
@@ -2499,23 +2503,23 @@
 
         return `<div class="entry-card${e.isTransfer ? ' xfer' : ''}">
       <div class="ec-left">
-        <div class="ec-desc">${desc}</div>
+        <div class="ec-desc">${safeDesc}</div>
         <div class="ec-meta">
-          <span class="ec-date">${parseDate(e.date)}${mh}</span>
-          <span class="ec-cat"><span class="${e.isTransfer ? 'stl' : ''}">${e.cat}</span></span>
+          <span class="ec-date">${esc(parseDate(e.date))}${mh}</span>
+          <span class="ec-cat"><span class="${e.isTransfer ? 'stl' : ''}">${esc(e.cat)}</span></span>
         </div>
       </div>
       <div class="ec-right">
-        <div class="ec-amt-lbl ${ia ? 'albl' : 'ilbl'}">${e.isTransfer ? 'transfer' : e.who}</div>
+        <div class="ec-amt-lbl ${ia ? 'albl' : 'ilbl'}">${e.isTransfer ? 'transfer' : esc(e.who)}</div>
         <div class="ec-amt-val ${e.isTransfer ? 'aa' : ia ? 'aa' : 'ia'}">€${e.amount.toFixed(2)}</div>
       </div>
-      ${canDel ? `<button class="ec-del" onclick="del('${view}',${e.rowIndex},${li})">✕</button>` : ''}
+      ${canDel ? `<button class="ec-del" onclick="del(${viewArg},${e.rowIndex},${li})">✕</button>` : ''}
     </div>`;
       }).join('');
 
       // Mobile summary card
       mc.innerHTML += `<div class="ec-summary">
-    <div class="ec-summary-lbl">Bills total — ${viewLabel}</div>
+    <div class="ec-summary-lbl">Bills total — ${safeViewLabel}</div>
     <div class="ec-summary-amts">
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--aleks-text)">Aleks</div>
@@ -2539,14 +2543,14 @@
       const max = sorted[0]?.[1] || 1;
       const el = document.getElementById('catList');
       if (!sorted.length) {el.innerHTML = '<div class="empty">No category data yet.</div>'; return;}
-      el.innerHTML = sorted.map(([c, v]) => `<div class="cat-row"><div class="cat-nm">${c}</div><div class="cat-bw"><div class="cat-b" style="width:${(v / max * 100).toFixed(1)}%"></div></div><div class="cat-v">€${v.toFixed(2)}</div></div>`).join('');
+      el.innerHTML = sorted.map(([c, v]) => `<div class="cat-row"><div class="cat-nm">${esc(c)}</div><div class="cat-bw"><div class="cat-b" style="width:${(v / max * 100).toFixed(1)}%"></div></div><div class="cat-v">€${v.toFixed(2)}</div></div>`).join('');
     }
     function renderHist() {
       const el = document.getElementById('histList');
       if (!closed.length) {el.innerHTML = '<div class="empty">No closed months yet.</div>'; return;}
       el.innerHTML = closed.slice().reverse().map(m => `<div class="hist-row">
     <div>
-      <div style="font-weight:500">${m.month} ${m.year}</div>
+      <div style="font-weight:500">${esc(m.month)} ${esc(m.year)}</div>
       <div style="font-size:12px;color:var(--text2)">Aleks €${(+m.aleksSpend).toFixed(2)} · Ivan €${(+m.ivanSpend).toFixed(2)} · Total €${(+m.totalBills).toFixed(2)}</div>
     </div>
     <div style="font-size:12px;font-family:var(--fm);font-weight:600;color:${m.settled ? 'var(--ivan-text)' : '#993C1D'}">${m.settled ? 'Settled' : 'Open'}</div>
@@ -2645,6 +2649,18 @@
       const d = new Date(raw);
       return isNaN(d) ? String(raw) : fmtDate(d);
     }
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[ch]);
+    }
+    function jsString(value) {
+      return esc(JSON.stringify(String(value ?? '')));
+    }
     function cap(s) {return s ? s[0].toUpperCase() + s.slice(1) : s;}
     function toast(msg) {const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 3000);}
 
@@ -2668,3 +2684,4 @@
 </body>
 
 </html>
+
